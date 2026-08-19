@@ -9,6 +9,8 @@
 | `just check` | Biome, TypeScript, and Vitest |
 | `just build` | Production Next.js build |
 | `just ui-check` | Widescreen screenshot and console/overflow audit |
+| `npm run demo:build` | Generate the frozen, fictional Pages demo |
+| `npm run demo:screenshot` | Rebuild and capture the README demo image |
 | `just audit` | Production dependency vulnerability audit |
 | `just db` | Open the configured SQLite database |
 | `just docker-up` | Build and run the container locally |
@@ -23,4 +25,4 @@ Tags matching `v*` create a GitHub release and publish a multi-platform image to
 
 ## Documentation
 
-Documentation is built by the reusable `oddship/moat` GitHub Pages workflow whenever `main` changes under `docs/`.
+The Pages workflow installs a pinned Oddship Moat release, builds documentation, then runs the repeatable static demo generator into the same `_site` artifact. Demo source lives in `demo/`; generated `_site` output is ignored.

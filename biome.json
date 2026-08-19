@@ -37,5 +37,18 @@
   },
   "assist": {
     "actions": { "source": { "organizeImports": "on" } }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["demo/index.html"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useButtonType": "off",
+            "useValidAnchor": "off"
+          }
+        }
+      }
+    }
+  ]
 }

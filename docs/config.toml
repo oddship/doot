@@ -25,6 +25,10 @@ url = "https://github.com/oddship/doot"
 icon = "github"
 
 [[topnav]]
+title = "Demo"
+url = "https://oddship.github.io/doot/demo/"
+
+[[topnav]]
 title = "Product"
 url = "/02-product/01-product-spec/"
 

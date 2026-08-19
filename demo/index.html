@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Doot demo — a local email emissary</title>
+  <style>/*__DOOT_CSS__*/</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand demo-button-link" data-view="workspace"><img class="brand-mark" src="doot-mark.svg" alt=""><span class="brand-copy"><strong>Doot</strong><small>by oddship</small></span></a>
+    <nav class="nav" aria-label="Demo navigation">
+      <a class="demo-nav active" data-view="workspace">Workspace</a><a class="demo-nav" data-view="inbox">Inbox</a><a class="demo-nav" data-view="flows">Flows</a><a class="demo-nav" data-view="history">History</a><a class="demo-nav" data-view="settings">Settings</a>
+    </nav>
+    <div class="top-actions"><span class="badge badge-good">Frozen demo</span></div>
+  </header>
+  <div class="demo-banner"><strong>Demo mode.</strong> This static site uses fictional data, makes no network requests, and cannot connect to a mailbox.</div>
+
+  <main class="demo-shell">
+    <section class="demo-view demo-workspace" data-panel="workspace">
+      <aside class="demo-agent">
+        <div class="pane-head"><div><h1>Doot</h1><p>Local inbox emissary · approval-only actions</p></div><span class="badge badge-good">Ready</span></div>
+        <div class="demo-conversation">
+          <div class="message message-user"><div class="message-role">You</div><p>Organize my inbox and find recurring work I can safely automate.</p></div>
+          <div class="message message-assistant"><div class="message-role">Doot</div><p>I inspected the complete cached mailbox through aggregate and paginated search tools. Three clusters deserve attention; I prepared one disabled Flow for review.</p></div>
+          <div class="tool-call"><div class="tool-icon">✓</div><div><strong>Search cached mail</strong><p>Complete · 1,248 headers considered</p></div></div>
+          <div class="tool-call"><div class="tool-icon">✓</div><div><strong>Prepare generated workspace</strong><p>Complete · no mailbox changes</p></div></div>
+        </div>
+        <div class="prompt-wrap"><div class="prompt-box"><textarea placeholder="Ask Doot about this fictional inbox…"></textarea><button class="button button-icon demo-muted-action" aria-label="Demo prompt">↗</button></div></div>
+      </aside>
+      <div class="demo-canvas">
+        <header class="generated-header"><span class="badge badge-good">Prepared by Doot</span><h1>Inbox briefing</h1><p>Subscription noise is concentrated in product updates, while receipts and team alerts remain useful. Nothing has been changed upstream.</p></header>
+        <div class="workspace-grid cols-4">
+          <div class="card node-card metric-card tone-attention"><div class="metric-label">Cached messages</div><div class="metric-value">1,248</div><div class="muted">Across two demo accounts</div></div>
+          <div class="card node-card metric-card"><div class="metric-label">Needs attention</div><div class="metric-value">18</div><div class="muted">Payments and team alerts</div></div>
+          <div class="card node-card metric-card"><div class="metric-label">Low-signal updates</div><div class="metric-value">364</div><div class="muted">Validated search cluster</div></div>
+          <div class="card node-card metric-card tone-good"><div class="metric-label">Suggested Flows</div><div class="metric-value">1</div><div class="muted">Disabled pending review</div></div>
+        </div>
+        <div class="card node-card"><div class="node-title-row"><h3>Recent messages worth opening</h3><button class="button button-outline button-sm demo-button-link" data-view="inbox">Review in Inbox</button></div>
+          <div class="message-list">
+            <div class="message-row demo-button-link" data-view="inbox"><strong>Receipt for your Acme Cloud subscription</strong><span>billing@acme.example · Today, 09:42</span><div class="message-tags"><span class="badge">receipt</span><span class="badge">finance</span></div></div>
+            <div class="message-row"><strong>Deployment needs your approval</strong><span>buildbot@harbor.example · Today, 08:15</span><div class="message-tags"><span class="badge">team</span><span class="badge">action</span></div></div>
+            <div class="message-row"><strong>Your weekly product digest</strong><span>digest@northstar.example · Yesterday</span><div class="message-tags"><span class="badge">newsletter</span></div></div>
+          </div>
+        </div>
+        <h2 style="margin:22px 0 12px">Actionable searches</h2>
+        <div class="demo-searches">
+          <div class="card demo-search-card"><h3>Receipts and invoices</h3><p class="muted">86 matching messages from known billing senders.</p><span class="badge">86 matches</span><button class="button button-outline button-sm demo-button-link" data-view="inbox">Search Inbox ↗</button></div>
+          <div class="card demo-search-card"><h3>Product digests</h3><p class="muted">A stable recurring cluster suitable for review.</p><span class="badge">214 matches</span><button class="button button-outline button-sm demo-button-link" data-view="flows">Review Flow ↗</button></div>
+          <div class="card demo-search-card"><h3>Team approvals</h3><p class="muted">Recent build and access requests that need attention.</p><span class="badge">18 matches</span><button class="button button-outline button-sm demo-button-link" data-view="inbox">Search Inbox ↗</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="demo-view demo-inbox" data-panel="inbox" hidden>
+      <div class="inbox-list demo-mail-list"><div class="toolbar"><select><option>All accounts</option></select><input class="input" value="receipt invoice" aria-label="Search"><button class="button button-outline button-sm">Search</button></div>
+        <div class="demo-mail-scroll">
+          <div class="mail-item demo-mail active" data-mail="receipt"><input type="checkbox"><div><strong>Acme Cloud Billing</strong><div class="subject">Receipt for your Acme Cloud subscription</div><small>alex@example.com · cached body</small></div><small>20/08/2026, 09:42</small></div>
+          <div class="mail-item demo-mail" data-mail="approval"><input type="checkbox"><div><strong>Harbor Buildbot</strong><div class="subject">Deployment needs your approval</div><small>alex@example.com</small></div><small>20/08/2026, 08:15</small></div>
+          <div class="mail-item demo-mail" data-mail="digest"><input type="checkbox"><div><strong>Northstar</strong><div class="subject">Your weekly product digest</div><small>work@example.com</small></div><small>19/08/2026, 17:10</small></div>
+          <div class="mail-item demo-mail"><input type="checkbox"><div><strong>Railway Tickets</strong><div class="subject">Your journey confirmation</div><small>alex@example.com</small></div><small>19/08/2026, 11:32</small></div>
+        </div>
+      </div>
+      <article class="reader-pane demo-reader"><div class="email-document"><header class="email-header"><div class="email-account-row"><span class="badge">alex@example.com</span><span>✓ Read without marking seen</span></div><h1>Receipt for your Acme Cloud subscription</h1><div class="sender-block"><div class="sender-avatar">AC</div><div><strong>Acme Cloud Billing</strong><div class="muted">billing@acme.example · 20/08/2026, 09:42</div></div></div></header><div class="renderer-toolbar"><div class="tabs"><button class="active">Message</button><button>Plain text</button></div><span class="badge">Remote images blocked</span></div><div class="demo-email-body"><p>Hello Alex,</p><p>Thanks for your subscription. Here is the receipt for your fictional demo workspace.</p><div class="receipt"><h2>Payment receipt</h2><table class="demo-table"><tr><td>Acme Cloud — Team plan</td><td>₹2,400.00</td></tr><tr><td>Tax</td><td>₹432.00</td></tr><tr><td><strong>Total</strong></td><td><strong>₹2,832.00</strong></td></tr></table><p class="muted">Demo transaction · no real payment information</p></div></div></div></article>
+    </section>
+
+    <section class="demo-view page demo-flows" data-panel="flows" hidden><header class="page-head"><div><h1>Flows</h1><p>Reusable filters with proposal-only archive, move, or delete actions.</p></div><button class="button">New Flow</button></header><div class="rules-layout"><aside class="rules-sidebar"><div class="rule-list-item active"><div class="rule-list-icon">⇢</div><div><strong>Archive product digests</strong><small>digest product update</small></div><span class="badge badge-attention">suggested</span></div><div class="rule-list-item"><div class="rule-list-icon">⇢</div><div><strong>Move receipts to Finance</strong><small>receipt invoice</small></div><span class="badge">draft</span></div></aside><div class="rules-detail"><div class="card rule-hero"><div class="node-title-row"><div><span class="badge badge-attention">Suggested by Doot</span><h2>Archive product digests</h2><p class="muted">A narrow, stable sender pattern. This Flow is disabled until you review and run it.</p></div><div class="action-list"><button class="button button-outline button-sm">Ask Doot to modify</button><button class="button button-outline button-sm">Edit</button></div></div><div class="rule-definition"><div><span>Account</span><strong>work@example.com</strong></div><div><span>Filter</span><code>from:digest@northstar.example</code></div><div><span>Action</span><strong>Archive matching messages</strong></div><div><span>Status</span><strong>Disabled · review</strong></div></div></div><div class="card rule-preview"><div class="node-title-row"><div><h3>Current matches</h3><p class="muted">Preview the exact results before approval.</p></div><button class="button button-sm">Review &amp; run</button></div><div class="rule-match-count"><strong>214</strong><span>cached matches · up to 100 per approved run</span></div><div class="rule-message-list"><a><div><strong>Your weekly product digest</strong><span>digest@northstar.example</span></div><time>19/08/2026</time></a><a><div><strong>Northstar release notes</strong><span>digest@northstar.example</span></div><time>12/08/2026</time></a></div></div></div></div></section>
+
+    <section class="demo-view page demo-history" data-panel="history" hidden><header class="page-head"><div><h1>History</h1><p>Read-only Doot interactions and background jobs survive restarts.</p></div><span class="badge">6 demo entries</span></header><div class="session-list"><a class="session-link"><div class="session-title"><strong>Organize demo inbox</strong><span class="badge badge-good">Doot</span></div><span>openai / demo-model · complete · 24 events</span><span>20/08/2026, 10:03</span></a><a class="session-link"><div class="session-title"><strong>Sync mail · 2 accounts</strong><span class="badge badge-attention">Job</span></div><span>Background sync · complete · 8 events</span><span>20/08/2026, 09:51</span></a><a class="session-link"><div class="session-title"><strong>Find payment receipts</strong><span class="badge badge-good">Doot</span></div><span>openai / demo-model · complete · 15 events</span><span>19/08/2026, 18:22</span></a></div></section>
+
+    <section class="demo-view page demo-settings" data-panel="settings" hidden><header class="page-head"><div><h1>Settings</h1><p>Connections, model, sync limits, privacy, delegation, and Doot memory.</p></div><button class="button demo-muted-action">Save settings</button></header><div class="demo-settings-grid"><div class="card settings-section"><div class="node-title-row"><div><h2>Connected accounts</h2><p class="muted">Demo credentials are fictional and cannot be edited.</p></div><button class="button button-outline button-sm demo-muted-action">Add</button></div><div class="account-list"><div class="account-row"><div><strong>alex@example.com</strong><span>imap.example.com:993 · TLS</span></div><span class="badge badge-good">Connected</span></div><div class="account-row"><div><strong>work@example.com</strong><span>imap.example.com:993 · TLS</span></div><span class="badge badge-good">Connected</span></div></div></div><div class="card settings-section"><h2>Agent model</h2><label class="label">Provider</label><select><option>Demo provider</option></select><label class="label">Reasoning effort</label><select><option>Medium</option></select></div><div class="card settings-section"><h2>Privacy and delegation</h2><label><input type="checkbox" checked> Block remote images</label><br><label><input type="checkbox"> Share selected message bodies</label></div></div></section>
+  </main>
+  <script>
+    const show = (name) => {
+      document.querySelectorAll("[data-panel]").forEach((panel) => {
+        panel.hidden = panel.dataset.panel !== name;
+      });
+      document.querySelectorAll(".demo-nav").forEach((link) => {
+        link.classList.toggle("active", link.dataset.view === name);
+      });
+      window.scrollTo(0, 0);
+    };
+    document.querySelectorAll("[data-view]").forEach((element) => {
+      element.addEventListener("click", () => show(element.dataset.view));
+    });
+    document.querySelectorAll(".demo-mail").forEach((element) => {
+      element.addEventListener("click", () => {
+        document.querySelectorAll(".demo-mail").forEach((mail) => {
+          mail.classList.remove("active");
+        });
+        element.classList.add("active");
+      });
+    });
+  </script>
+</body>
+</html>

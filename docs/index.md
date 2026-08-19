@@ -6,6 +6,7 @@ Doot connects to IMAP, maintains a searchable local cache, and gives a constrain
 
 ## Start here
 
+- [Open the frozen interactive demo](https://oddship.github.io/doot/demo/)
 - [Getting started](01-guide/01-getting-started.md)
 - [Safety model](01-guide/02-safety-model.md)
 - [v0.1 product specification](02-product/01-product-spec.md)
@@ -15,3 +16,5 @@ Doot connects to IMAP, maintains a searchable local cache, and gives a constrain
 ## Release status
 
 v0.1 is intended for local, single-user evaluation. It has no authentication and must not be exposed to the public internet.
+
+The hosted demo is a static, deterministic build with fictional data. It makes no API requests and cannot connect to mail.

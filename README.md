@@ -4,6 +4,12 @@
 
 <p align="center"><strong>A trusted, local-first emissary for your inbox.</strong></p>
 
+<p align="center"><a href="https://oddship.github.io/doot/demo/"><strong>Try the frozen demo →</strong></a></p>
+
+<p align="center">
+  <a href="https://oddship.github.io/doot/demo/"><img src="docs/_static/doot-demo.png" width="1200" alt="Doot demo workspace with fictional email data" /></a>
+</p>
+
 Doot is an agent-first email workspace that investigates a local IMAP cache, builds useful views, and prepares reviewable actions. It never silently mutates your mailbox: archive, move, delete, folder, and Flow operations cross an explicit browser confirmation boundary.
 
 > Doot is an early v0.1 release. Run it locally, keep backups, and review every proposed mailbox action.
@@ -81,6 +87,8 @@ Read the complete [safety model](docs/01-guide/02-safety-model.md) and [security
 ## Documentation
 
 The source in [`docs/`](docs/) is published with [Oddship Moat](https://github.com/oddship/moat) at <https://oddship.github.io/doot/>. Product scope and decisions live in the [v0.1 product specification](docs/02-product/01-product-spec.md).
+
+The [frozen demo](https://oddship.github.io/doot/demo/) is generated reproducibly from the real application styles and deterministic fictional fixtures by `npm run demo:build`. It performs no network requests and has no mailbox access. Regenerate its README screenshot with `npm run demo:screenshot`.
 
 ## Contributing
 

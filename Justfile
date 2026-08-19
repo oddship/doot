@@ -30,6 +30,12 @@ check:
 ui-check:
   npm run test:ui
 
+demo-build:
+  npm run demo:build
+
+demo-screenshot:
+  npm run demo:screenshot
+
 audit:
   npm run audit:prod
 
