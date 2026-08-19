@@ -1,0 +1,40 @@
+{
+  "sessions": [
+    {
+      "id": "demo-session-001",
+      "history_kind": "agent",
+      "title": "Organize my inbox",
+      "status": "complete",
+      "event_count": 14,
+      "model_provider": "anthropic",
+      "model_id": "claude-sonnet",
+      "updated_at": "2026-08-20T09:15:00.000Z"
+    },
+    {
+      "id": "demo-job-002",
+      "history_kind": "job",
+      "title": "Sync alex@example.com",
+      "status": "complete",
+      "event_count": 8,
+      "updated_at": "2026-08-20T08:55:00.000Z"
+    },
+    {
+      "id": "demo-session-003",
+      "history_kind": "agent",
+      "title": "Find travel receipts",
+      "status": "complete",
+      "event_count": 9,
+      "model_provider": "anthropic",
+      "model_id": "claude-sonnet",
+      "updated_at": "2026-08-19T16:20:00.000Z"
+    },
+    {
+      "id": "demo-job-004",
+      "history_kind": "job",
+      "title": "Sync work@example.com",
+      "status": "complete",
+      "event_count": 7,
+      "updated_at": "2026-08-19T15:02:00.000Z"
+    }
+  ]
+}

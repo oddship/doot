@@ -1,0 +1,4 @@
+interface:
+  display_name: "Email Inbox Cleanup"
+  short_description: "Safely review and organize multiple inboxes"
+  default_prompt: "Review my connected inboxes and prepare a conservative cleanup plan."

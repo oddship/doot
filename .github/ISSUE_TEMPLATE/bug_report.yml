@@ -1,0 +1,40 @@
+name: Bug report
+description: Report reproducible behavior in Doot
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include passwords, provider keys, or private email content.
+  - type: input
+    id: version
+    attributes:
+      label: Doot version or commit
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      options: [Node/npm, Nix/direnv, Docker]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction
+      description: Minimal steps using redacted/sample data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true

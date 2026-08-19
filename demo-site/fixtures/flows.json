@@ -1,0 +1,79 @@
+{
+  "rules": [
+    {
+      "id": 12,
+      "name": "File transaction receipts",
+      "account": "alex_at_example_com",
+      "query": "from:receipts@stripe.example",
+      "action": "move",
+      "target_folder": "Transactions",
+      "status": "suggested",
+      "enabled": false,
+      "source": "agent",
+      "rationale": "Keep financial messages available while filing recurring receipts.",
+      "created_at": "2026-08-20T09:15:00.000Z",
+      "updated_at": "2026-08-20T09:15:00.000Z"
+    },
+    {
+      "id": 8,
+      "name": "Quiet product digests",
+      "account": "work_at_example_com",
+      "query": "from:updates@product.example",
+      "action": "archive",
+      "target_folder": null,
+      "status": "active",
+      "enabled": true,
+      "source": "manual",
+      "rationale": "Keep routine product mail out of the main Inbox.",
+      "created_at": "2026-08-18T10:00:00.000Z",
+      "updated_at": "2026-08-19T15:25:00.000Z"
+    },
+    {
+      "id": 4,
+      "name": "Review old newsletters",
+      "account": "alex_at_example_com",
+      "query": "subject:newsletter",
+      "action": "delete",
+      "target_folder": null,
+      "status": "draft",
+      "enabled": false,
+      "source": "manual",
+      "rationale": "A manual cleanup Flow; deletion always requires explicit review.",
+      "created_at": "2026-08-16T10:00:00.000Z",
+      "updated_at": "2026-08-18T11:30:00.000Z"
+    }
+  ],
+  "accounts": [
+    { "name": "alex_at_example_com", "email": "alex@example.com", "provider": "gmail" },
+    { "name": "work_at_example_com", "email": "work@example.com", "provider": "imap" }
+  ],
+  "folders": [
+    { "account": "alex_at_example_com", "path": "Transactions", "flags": [], "rule_target_allowed": true },
+    { "account": "work_at_example_com", "path": "Reading", "flags": [], "rule_target_allowed": true }
+  ],
+  "previews": {
+    "12": {
+      "total": 84,
+      "messages": [
+        {
+          "uid": "8095",
+          "account": "alex_at_example_com",
+          "account_email": "alex@example.com",
+          "sender": "Stripe Demo <receipts@stripe.example>",
+          "subject": "Receipt for your subscription",
+          "date": "2026-08-19T10:04:00.000Z"
+        },
+        {
+          "uid": "8071",
+          "account": "alex_at_example_com",
+          "account_email": "alex@example.com",
+          "sender": "Stripe Demo <receipts@stripe.example>",
+          "subject": "Payment confirmation",
+          "date": "2026-08-12T10:04:00.000Z"
+        }
+      ]
+    },
+    "8": { "total": 126, "messages": [] },
+    "4": { "total": 31, "messages": [] }
+  }
+}

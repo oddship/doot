@@ -1,0 +1,32 @@
+{
+  "selected_ids": ["alex_at_example_com:8102", "alex_at_example_com:8101", "alex_at_example_com:8095"],
+  "entries": [
+    { "role": "user", "text": "Organize my inbox. Keep anything involving money or account security visible." },
+    {
+      "role": "assistant",
+      "reasoning": "I inspected cached headers, then checked sender and subject clusters while excluding security mail from archive candidates.",
+      "tools": [
+        {
+          "id": "demo-tool-1",
+          "name": "search_messages",
+          "state": "complete",
+          "detail": "1,248 headers searched · 3 clusters returned"
+        },
+        {
+          "id": "demo-tool-2",
+          "name": "preview_flow",
+          "state": "complete",
+          "detail": "84 matches · no mailbox changes · awaiting approval"
+        },
+        {
+          "id": "demo-tool-3",
+          "name": "memory_put",
+          "state": "complete",
+          "detail": "Saved preference: keep financial and security mail visible"
+        }
+      ],
+      "text": "I found a conservative filing Flow and kept all financial and security mail out of archive suggestions.",
+      "status": { "status": "complete", "detail": "Doot finished · workspace saved" }
+    }
+  ]
+}

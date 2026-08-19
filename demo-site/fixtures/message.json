@@ -1,0 +1,13 @@
+{
+  "uid": "8102",
+  "account": "alex_at_example_com",
+  "account_email": "alex@example.com",
+  "sender": "Priya Nair <priya@example.com>",
+  "subject": "Re: design review notes",
+  "date": "2026-08-20T08:42:00.000Z",
+  "body_text": "Hi Alex — I added the final accessibility notes and tightened the mobile navigation states.\n\nCould you check the Flow preview once more? If it looks right, we can include it in Friday’s release.\n\nThanks,\nPriya",
+  "body_html_sanitized": "<h2>The review is in good shape</h2><p>Hi Alex — I added the final accessibility notes and tightened the mobile navigation states.</p><p>Could you check the Flow preview once more? If it looks right, we can include it in Friday’s release.</p><p>Thanks,<br>Priya</p>",
+  "has_remote_images": true,
+  "remote_images_allowed": false,
+  "attachments": []
+}

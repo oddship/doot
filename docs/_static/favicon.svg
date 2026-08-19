@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Doot messenger mark</title>
+  <defs>
+    <mask id="envelope-cut">
+      <rect width="64" height="64" fill="black"/>
+      <path d="M15 8h17c16 0 27 9.8 27 24S48 56 32 56H15V8Z" fill="white"/>
+      <path d="m15 21 21 22 16-15 3 3-19 19-21-22Z" fill="black"/>
+    </mask>
+  </defs>
+  <circle cx="8" cy="32" r="5" fill="#e4a326"/>
+  <path d="M15 8h17c16 0 27 9.8 27 24S48 56 32 56H15V8Z" fill="#0d292c" mask="url(#envelope-cut)"/>
+  <path d="m15 40 9-9 12 12-13 13h-8Z" fill="#006d77" mask="url(#envelope-cut)"/>
+</svg>

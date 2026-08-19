@@ -1,0 +1,58 @@
+{
+  "total": 1248,
+  "offset": 0,
+  "limit": 25,
+  "mailbox": { "messages": 1834, "unseen": 206, "last_sync": "2026-08-20T08:55:00.000Z" },
+  "messages": [
+    {
+      "uid": "8102",
+      "account": "alex_at_example_com",
+      "account_email": "alex@example.com",
+      "sender": "Priya Nair <priya@example.com>",
+      "subject": "Re: design review notes",
+      "date": "2026-08-20T08:42:00.000Z",
+      "body_fetched": 1,
+      "unread": 1
+    },
+    {
+      "uid": "8101",
+      "account": "alex_at_example_com",
+      "account_email": "alex@example.com",
+      "sender": "Northwind Bank <alerts@bank.example>",
+      "subject": "Your monthly statement is ready",
+      "date": "2026-08-20T07:10:00.000Z",
+      "body_fetched": 0,
+      "unread": 1
+    },
+    {
+      "uid": "8099",
+      "account": "work_at_example_com",
+      "account_email": "work@example.com",
+      "sender": "Oddship Projects <updates@product.example>",
+      "subject": "Weekly project digest",
+      "date": "2026-08-19T15:25:00.000Z",
+      "body_fetched": 1,
+      "unread": 0
+    },
+    {
+      "uid": "8095",
+      "account": "alex_at_example_com",
+      "account_email": "alex@example.com",
+      "sender": "Stripe Demo <receipts@stripe.example>",
+      "subject": "Receipt for your subscription",
+      "date": "2026-08-19T10:04:00.000Z",
+      "body_fetched": 1,
+      "unread": 0
+    },
+    {
+      "uid": "8090",
+      "account": "work_at_example_com",
+      "account_email": "work@example.com",
+      "sender": "Aarav Mehta <aarav@example.com>",
+      "subject": "Lunch next week?",
+      "date": "2026-08-18T12:30:00.000Z",
+      "body_fetched": 0,
+      "unread": 1
+    }
+  ]
+}

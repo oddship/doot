@@ -1,0 +1,16 @@
+services:
+  doot:
+    build: .
+    ports:
+      - "${DOOT_PORT:-8765}:8765"
+    environment:
+      DOOT_HOST: 0.0.0.0
+      DOOT_PORT: 8765
+      DOOT_DATABASE_PATH: /data/email-cache.sqlite3
+    volumes:
+      - doot-data:/data
+    init: true
+    restart: unless-stopped
+
+volumes:
+  doot-data:

@@ -1,0 +1,586 @@
+"use client";
+import {
+  Archive,
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight,
+  FolderInput,
+  ImageIcon,
+  MailOpen,
+  Paperclip,
+  Search,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { EmailFrame } from "@/components/email-frame";
+import { useToast } from "@/components/feedback";
+import { LocalTime } from "@/components/local-time";
+import { Badge, Button, Dialog, Input, Label, Skeleton, Tabs } from "@/components/ui";
+import { apiJson, errorMessage } from "@/lib/client-api";
+import { replaceClientUrl } from "@/lib/client-navigation";
+import { loadSelectedIds, saveSelectedIds } from "@/lib/client-selection";
+import { paginationItems } from "@/lib/pagination";
+
+type Mail = {
+  account: string;
+  account_email: string;
+  uid: string;
+  sender: string;
+  subject: string;
+  date: string;
+  body_fetched?: number;
+  unread?: number;
+};
+type MoveFolder = { path: string; flags?: string[]; rule_target_allowed?: boolean };
+type MoveChoice = { account: string; provider: "gmail" | "imap"; folders: MoveFolder[]; target: string };
+export function InboxClient({
+  accounts,
+  initial,
+  initialAccount = "all",
+  initialQuery = "",
+  initialOpenUid,
+  initialLimit = 25,
+}: {
+  accounts: any[];
+  initial: any;
+  initialAccount?: string;
+  initialQuery?: string;
+  initialOpenUid?: string;
+  initialLimit?: number;
+}) {
+  const toast = useToast();
+  const [account, setAccount] = useState(initialAccount);
+  const [query, setQuery] = useState(initialQuery);
+  const [offset, setOffset] = useState(initial.offset || 0);
+  const [pageSize, setPageSize] = useState(initialLimit);
+  const [data, setData] = useState(initial);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [open, setOpen] = useState<Mail | null>(null);
+  const [detail, setDetail] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [proposal, setProposal] = useState<any>(null);
+  const [moveChoice, setMoveChoice] = useState<MoveChoice | null>(null);
+  const [moveLoading, setMoveLoading] = useState(false);
+  const [renderMode, setRenderMode] = useState("Message");
+  useEffect(() => {
+    const refresh = () => setSelected(loadSelectedIds());
+    refresh();
+    window.addEventListener("storage", refresh);
+    return () => window.removeEventListener("storage", refresh);
+  }, []);
+  const updateSelected = (update: (current: string[]) => string[]) => {
+    setSelected((current) => {
+      const next = update(current);
+      saveSelectedIds(next);
+      return loadSelectedIds();
+    });
+  };
+  const updateUrl = (
+    nextAccount: string,
+    nextQuery: string,
+    openUid?: string,
+    nextOffset = offset,
+    nextLimit = pageSize,
+  ) => {
+    const params = new URLSearchParams();
+    if (nextAccount !== "all") params.set("account", nextAccount);
+    if (nextQuery) params.set("query", nextQuery);
+    if (openUid) params.set("open", openUid);
+    const page = Math.floor(nextOffset / nextLimit) + 1;
+    if (page > 1) params.set("page", String(page));
+    if (nextLimit !== 25) params.set("limit", String(nextLimit));
+    replaceClientUrl(`/inbox${params.size ? `?${params}` : ""}`);
+  };
+  const load = async (nextOffset = offset, nextAccount = account, nextQuery = query, nextLimit = pageSize) => {
+    const value = await apiJson(
+      `/api/messages?account=${encodeURIComponent(nextAccount)}&query=${encodeURIComponent(nextQuery)}&offset=${nextOffset}&limit=${nextLimit}`,
+      {},
+      "Inbox search failed",
+    );
+    setData(value);
+    setOffset(nextOffset);
+    updateUrl(nextAccount, nextQuery, undefined, nextOffset, nextLimit);
+  };
+  const fetchMessage = async (mail: Mail, remote = false) => {
+    setLoading(true);
+    try {
+      setDetail(
+        await apiJson(
+          `/api/message?account=${encodeURIComponent(mail.account)}&uid=${encodeURIComponent(mail.uid)}${remote ? "&remote=1" : ""}`,
+          {},
+          "Could not load message",
+        ),
+      );
+    } catch (error) {
+      setDetail({ error: errorMessage(error, "Could not load message") });
+    } finally {
+      setLoading(false);
+    }
+  };
+  const openMessage = async (mail: Mail) => {
+    setOpen(mail);
+    setDetail(null);
+    setRenderMode("Message");
+    updateUrl(account, query, mail.uid);
+    await fetchMessage(mail);
+  };
+  useEffect(() => {
+    if (!initialOpenUid) return;
+    const match = initial.messages.find(
+      (mail: Mail) => mail.uid === initialOpenUid && (initialAccount === "all" || mail.account === initialAccount),
+    );
+    if (match) void openMessage(match);
+    else if (initialAccount !== "all")
+      void (async () => {
+        setLoading(true);
+        try {
+          const value = await apiJson<any>(
+            `/api/message?account=${encodeURIComponent(initialAccount)}&uid=${encodeURIComponent(initialOpenUid)}`,
+            {},
+            "Could not load message",
+          );
+          setOpen(value);
+          setDetail(value);
+          setRenderMode("Message");
+        } catch (error) {
+          setDetail({ error: errorMessage(error, "Could not load message") });
+        } finally {
+          setLoading(false);
+        }
+      })();
+  }, []);
+  const toggle = (mail: Mail) => {
+    const id = `${mail.account}:${mail.uid}`;
+    updateSelected((old) => (old.includes(id) ? old.filter((value) => value !== id) : [...old, id]));
+  };
+  const pageIds = (data.messages || []).map((mail: Mail) => `${mail.account}:${mail.uid}`);
+  const pageSelected = pageIds.length > 0 && pageIds.every((id: string) => selected.includes(id));
+  const togglePage = () => {
+    updateSelected((old) => {
+      if (pageSelected) return old.filter((id) => !pageIds.includes(id));
+      return [...new Set([...old, ...pageIds])];
+    });
+  };
+  const createManualProposal = async (
+    action: "archive" | "move" | "delete",
+    messageIds: string[],
+    folder?: string,
+    reason = "Manually selected in Inbox",
+  ) => {
+    const items = messageIds.map((id) => {
+      const split = id.lastIndexOf(":");
+      return { account: id.slice(0, split), uid: id.slice(split + 1), ...(folder ? { folder } : {}) };
+    });
+    try {
+      const value = await apiJson(
+        "/api/manual-proposals",
+        {
+          method: "POST",
+          json: {
+            action,
+            items,
+            reason,
+          },
+        },
+        "Could not create proposal",
+      );
+      setProposal(value);
+      if (action === "move") setMoveChoice(null);
+    } catch (error) {
+      toast.error("Could not create proposal", errorMessage(error, "Please try again."));
+    }
+  };
+  const propose = (action: "archive" | "move" | "delete", folder?: string) =>
+    createManualProposal(action, selected, folder);
+  const prepareMove = async () => {
+    const selectedAccounts = [...new Set(selected.map((id) => id.slice(0, id.lastIndexOf(":"))))];
+    if (selectedAccounts.length !== 1) {
+      toast.info(
+        "Choose one account",
+        "Select messages from one account at a time. Folder and Gmail label paths are account-specific.",
+      );
+      return;
+    }
+    const accountName = selectedAccounts[0];
+    setMoveLoading(true);
+    try {
+      const value = await apiJson<{ provider: "gmail" | "imap"; folders: MoveFolder[] }>(
+        `/api/accounts/${encodeURIComponent(accountName)}/folders`,
+        { cache: "no-store" },
+        "Could not load move destinations",
+      );
+      const folders = value.folders.filter(
+        (folder) =>
+          folder.rule_target_allowed !== false && !folder.flags?.some((flag) => flag.toLowerCase() === "\\noselect"),
+      );
+      setMoveChoice({ account: accountName, provider: value.provider, folders, target: "" });
+    } catch (error) {
+      toast.error("Could not load move destinations", errorMessage(error, "Please try again."));
+    } finally {
+      setMoveLoading(false);
+    }
+  };
+  const apply = async () => {
+    try {
+      await apiJson(
+        "/api/apply",
+        { method: "POST", json: { id: proposal.id, confirm: true } },
+        "Could not apply proposal",
+      );
+      setProposal(null);
+      saveSelectedIds([]);
+      setSelected([]);
+      await load();
+    } catch (error) {
+      toast.error("Could not apply proposal", errorMessage(error, "Please try again."));
+    }
+  };
+  const senderName = open?.sender?.replace(/\s*<[^>]+>\s*$/, "").replace(/^"|"$/g, "") || "Message";
+  const senderEmail = open?.sender?.match(/<([^>]+)>/)?.[1] || open?.sender || "";
+  const initials = senderName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+  const currentPage = Math.floor(offset / pageSize) + 1;
+  const totalPages = Math.max(1, Math.ceil(data.total / pageSize));
+  const pages = paginationItems(currentPage, totalPages);
+  return (
+    <main className="page inbox-page">
+      <header className="page-head">
+        <div>
+          <h1>Inbox</h1>
+          <p>
+            Cached headers load instantly. Bodies are fetched only when opened, without intentionally marking mail read.
+          </p>
+        </div>
+        <div className="action-list">
+          <Badge>{data.total} cached</Badge>
+          {data.mailbox?.messages != null && <Badge>{Number(data.mailbox.messages).toLocaleString()} in Inbox</Badge>}
+          {data.mailbox?.unseen != null && <Badge>{Number(data.mailbox.unseen).toLocaleString()} unread</Badge>}
+        </div>
+      </header>
+      <div className="inbox-layout">
+        <section className="inbox-list">
+          <div className="toolbar">
+            <select
+              aria-label="Account"
+              value={account}
+              onChange={(event) => {
+                const value = event.target.value;
+                setAccount(value);
+                setOpen(null);
+                void load(0, value, query);
+              }}
+            >
+              <option value="all">All accounts</option>
+              {accounts.map((item) => (
+                <option value={item.name} key={item.name}>
+                  {item.email}
+                </option>
+              ))}
+            </select>
+            <Input
+              value={query}
+              placeholder="Search sender or subject"
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => event.key === "Enter" && load(0)}
+            />
+            <Button size="icon" variant="outline" onClick={() => load(0)}>
+              <Search size={16} />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!pageIds.length}
+              aria-label={pageSelected ? "Clear visible messages" : "Select all visible messages"}
+              onClick={togglePage}
+            >
+              <CheckSquare size={15} />
+              {pageSelected ? "Clear page" : "Select page"}
+            </Button>
+          </div>
+          <div className="mail-scroll">
+            {data.messages.map((mail: Mail) => {
+              const id = `${mail.account}:${mail.uid}`;
+              return (
+                <div
+                  className={`mail-item ${open?.account === mail.account && open?.uid === mail.uid ? "active" : ""}`}
+                  key={id}
+                  onClick={() => openMessage(mail)}
+                >
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${mail.subject}`}
+                    checked={selected.includes(id)}
+                    onChange={() => toggle(mail)}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                  <div>
+                    <strong>{mail.sender}</strong>
+                    <div className="subject">{mail.subject || "(no subject)"}</div>
+                    <small>
+                      {mail.account_email}
+                      {mail.body_fetched ? " · cached body" : ""}
+                    </small>
+                  </div>
+                  <small>{mail.date ? <LocalTime value={mail.date} /> : ""}</small>
+                </div>
+              );
+            })}
+          </div>
+          <div className="pagination">
+            <div className="page-buttons" aria-label="Inbox pages">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Previous page"
+                disabled={currentPage === 1}
+                onClick={() => load((currentPage - 2) * pageSize)}
+              >
+                <ChevronLeft size={14} />
+              </Button>
+              {pages.map((page, index) =>
+                page === "ellipsis" ? (
+                  <span className="page-ellipsis" key={`ellipsis-${index}`}>
+                    …
+                  </span>
+                ) : (
+                  <Button
+                    key={page}
+                    size="sm"
+                    variant={page === currentPage ? "default" : "ghost"}
+                    aria-current={page === currentPage ? "page" : undefined}
+                    onClick={() => load((page - 1) * pageSize)}
+                  >
+                    {page}
+                  </Button>
+                ),
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Next page"
+                disabled={currentPage === totalPages || data.total === 0}
+                onClick={() => load(currentPage * pageSize)}
+              >
+                <ChevronRight size={14} />
+              </Button>
+            </div>
+            <label className="page-size">
+              <span>Max results</span>
+              <select
+                aria-label="Maximum results per page"
+                value={pageSize}
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  setPageSize(value);
+                  void load(0, account, query, value);
+                }}
+              >
+                {[25, 50, 100].map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
+        <article className="reader-pane">
+          {!open ? (
+            <div className="reader-empty">
+              <div>
+                <MailOpen size={30} />
+                <strong>No message selected</strong>
+                <span>Choose a cached message to open it safely without changing its unread state.</span>
+              </div>
+            </div>
+          ) : (
+            <div className="email-document">
+              <header className="email-header">
+                <div className="email-account-row">
+                  <Badge>{open.account_email}</Badge>
+                  <span>
+                    <ShieldCheck size={13} /> Read without marking seen
+                  </span>
+                </div>
+                <h1>{open.subject || "(no subject)"}</h1>
+                <div className="sender-block">
+                  <div className="sender-avatar">{initials}</div>
+                  <div>
+                    <strong>{senderName}</strong>
+                    <div className="muted">
+                      {senderEmail} · {open.date ? <LocalTime value={open.date} /> : ""}
+                    </div>
+                  </div>
+                </div>
+              </header>
+              {loading ? (
+                <div className="email-loading">
+                  <Skeleton />
+                  <Skeleton />
+                  <Skeleton />
+                </div>
+              ) : detail?.error ? (
+                <p>{detail.error}</p>
+              ) : (
+                <>
+                  <div className="renderer-toolbar">
+                    <Tabs tabs={["Message", "Plain text"]} value={renderMode} onChange={setRenderMode} />
+                    <div className="renderer-actions">
+                      {detail?.has_remote_images && !detail?.remote_images_allowed && (
+                        <Button variant="outline" size="sm" onClick={() => fetchMessage(open, true)}>
+                          <ImageIcon size={14} />
+                          Load images once
+                        </Button>
+                      )}
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() =>
+                          void createManualProposal(
+                            "delete",
+                            [`${open.account}:${open.uid}`],
+                            undefined,
+                            `Delete opened message: ${open.subject || "(no subject)"}`,
+                          )
+                        }
+                      >
+                        <Trash2 size={14} />
+                        Delete message
+                      </Button>
+                    </div>
+                  </div>
+                  {detail?.has_remote_images && !detail?.remote_images_allowed && (
+                    <div className="remote-banner">
+                      <ShieldCheck size={15} />
+                      <span>Remote images are blocked to protect your privacy.</span>
+                    </div>
+                  )}
+                  <div className="email-body-surface">
+                    {renderMode === "Message" && detail?.body_html_sanitized ? (
+                      <EmailFrame html={detail.body_html_sanitized} />
+                    ) : (
+                      <div className="reader-content plain-content">
+                        {detail?.body_text || "No readable text body."}
+                      </div>
+                    )}
+                  </div>
+                  {detail?.attachments?.length > 0 && (
+                    <section className="attachment-section">
+                      <h3>
+                        <Paperclip size={15} /> Attachments
+                      </h3>
+                      <div className="attachment-grid">
+                        {detail.attachments.map((item: any, index: number) => (
+                          <div className="attachment-card" key={index}>
+                            <Paperclip size={16} />
+                            <div>
+                              <strong>{typeof item === "string" ? item : item.filename || "Attachment"}</strong>
+                              {typeof item === "object" && (item.content_type || item.size) && (
+                                <span>
+                                  {[item.content_type, item.size ? `${item.size} bytes` : ""]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </article>
+      </div>
+      {selected.length > 0 && (
+        <div className="selection-bar">
+          <strong>{selected.length} selected</strong>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              saveSelectedIds([]);
+              setSelected([]);
+            }}
+          >
+            Unselect all
+          </Button>
+          <Button size="sm" variant="outline" disabled={moveLoading} onClick={() => void prepareMove()}>
+            <FolderInput size={14} />
+            {moveLoading ? "Loading…" : "Move"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => propose("archive")}>
+            <Archive size={14} />
+            Archive
+          </Button>
+          <Button size="sm" variant="danger" onClick={() => propose("delete")}>
+            <Trash2 size={14} />
+            Delete
+          </Button>
+        </div>
+      )}
+      <Dialog
+        open={Boolean(moveChoice)}
+        title={`Move to ${moveChoice?.provider === "gmail" ? "label" : "folder"}`}
+        onClose={() => setMoveChoice(null)}
+      >
+        <p className="muted">
+          Choose a discovered destination for {selected.length} selected message(s). The mailbox will not change until
+          the next confirmation.
+        </p>
+        <Label htmlFor="move-target">Destination {moveChoice?.provider === "gmail" ? "label" : "folder"}</Label>
+        <select
+          id="move-target"
+          value={moveChoice?.target || ""}
+          onChange={(event) =>
+            setMoveChoice((current) => (current ? { ...current, target: event.target.value } : current))
+          }
+        >
+          <option value="">Select a destination</option>
+          {moveChoice?.folders.map((folder) => (
+            <option key={folder.path} value={folder.path}>
+              {folder.path}
+            </option>
+          ))}
+        </select>
+        {!moveChoice?.folders.length && (
+          <p className="muted">No selectable custom destinations were discovered. Create one in Settings first.</p>
+        )}
+        <div className="memory-dialog-actions" style={{ marginTop: 18 }}>
+          <Button variant="outline" onClick={() => setMoveChoice(null)}>
+            Cancel
+          </Button>
+          <Button disabled={!moveChoice?.target} onClick={() => void propose("move", moveChoice?.target)}>
+            Continue
+          </Button>
+        </div>
+      </Dialog>
+      <Dialog open={Boolean(proposal)} title="Confirm mailbox change" onClose={() => setProposal(null)}>
+        <p>
+          This will apply <strong>{proposal?.action}</strong> to {proposal?.items?.length} message(s) on the upstream
+          mailbox. This action requires your explicit confirmation.
+        </p>
+        {proposal?.action === "move" && proposal?.items?.[0]?.folder && (
+          <p>
+            Destination: <strong>{proposal.items[0].folder}</strong>
+          </p>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <Button variant="outline" onClick={() => setProposal(null)}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={apply}>
+            Confirm and apply
+          </Button>
+        </div>
+      </Dialog>
+    </main>
+  );
+}

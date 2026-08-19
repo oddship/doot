@@ -1,0 +1,84 @@
+// @vitest-environment node
+import { readFile } from "node:fs/promises";
+import { describe, expect, it } from "vitest";
+import { compactSource } from "./source-contract";
+
+describe("first-class email flows", () => {
+  it("persists filter/action rules and exposes CRUD, preview, and proposal APIs", async () => {
+    const database = await readFile("lib/database.ts", "utf8");
+    const route = await readFile("app/api/[...path]/route.ts", "utf8");
+    expect(database).toContain("CREATE TABLE IF NOT EXISTS email_rules");
+    expect(route).toContain('key === "rules" && method === "GET"');
+    expect(route).toContain('path[2] === "preview"');
+    expect(route).toContain('path[2] === "propose"');
+  });
+
+  it("gives Agent a disabled suggestion tool with exact-query validation", async () => {
+    const runtime = await readFile("lib/agent-runtime.ts", "utf8");
+    expect(runtime).toContain('name: "email_suggest_flow"');
+    expect(runtime).toContain('status: "suggested", enabled: false');
+    expect(runtime).toContain("Validate the exact flow account/query");
+    expect(runtime).toContain('enum: ["archive", "move", "delete"]');
+  });
+
+  it("lets a selected flow return to Agent for safe conversational edits", async () => {
+    const client = await readFile("components/rules-client.tsx", "utf8");
+    const workspace = await readFile("components/workspace-client.tsx", "utf8");
+    const runtime = await readFile("lib/agent-runtime.ts", "utf8");
+    expect(client).toContain("Ask Doot to modify");
+    expect(client).toContain("saveSelectedRule");
+    expect(workspace).toContain("selectedRule: loadSelectedRule()");
+    expect(runtime).toContain('name: "email_update_selected_flow"');
+    expect(runtime).toContain('status: "suggested", enabled: false');
+    expect(runtime).toContain("user selected this persisted flow");
+  });
+
+  it("keeps Agent-offered deletion behind flow review and explicit approval", async () => {
+    const rules = await readFile("lib/rules.ts", "utf8");
+    const runtime = await readFile("lib/agent-runtime.ts", "utf8");
+    const client = await readFile("components/rules-client.tsx", "utf8");
+    expect(rules).toContain('["archive", "move", "delete"]');
+    expect(runtime).toContain("Deletion may be recommended");
+    expect(client).toContain("Delete flows remain manual");
+    expect(client).toContain("Approve and run flow");
+    expect(client).toContain("confirm: true");
+  });
+
+  it("previews first and keeps execution proposal-only behind final browser approval", async () => {
+    const client = compactSource(await readFile("components/rules-client.tsx", "utf8"));
+    const route = compactSource(await readFile("app/api/[...path]/route.ts", "utf8"));
+    expect(client).toContain("Review &amp; run");
+    expect(client).toContain("Approve and run flow");
+    expect(client).toContain("The saved flow itself never runs automatically");
+    expect(route).toContain('path[2] === "run"');
+    expect(route).toContain('["rule-propose", id]');
+    expect(route).toContain('["apply", String(prepared.proposal.id)]');
+    expect(client).toContain("confirm: true");
+  });
+
+  it("directs Agent suggestions into the persisted flow review experience", async () => {
+    const runtime = await readFile("lib/agent-runtime.ts", "utf8");
+    expect(runtime).toContain("flow_suggestion card whose action is open_flow");
+    expect(runtime).toContain("Flows review, preview, and approve/run experience");
+  });
+
+  it("gives every persisted flow a canonical addressable page and redirects legacy rule URLs", async () => {
+    const page = await readFile("app/flows/[id]/page.tsx", "utf8");
+    const legacy = await readFile("app/rules/[id]/page.tsx", "utf8");
+    const client = await readFile("components/rules-client.tsx", "utf8");
+    const workspace = await readFile("components/generated-workspace.tsx", "utf8");
+    expect(page).toContain("initialFocus={id}");
+    expect(page).toContain("notFound()");
+    expect(client).toContain("href={`/flows/${rule.id}`}");
+    expect(workspace).toContain("`/flows/${intent.flowId}`");
+    expect(legacy).toContain("redirect(`/flows/");
+  });
+
+  it("does not let focus and recommendation requests substitute search links for flows", async () => {
+    const runtime = await readFile("lib/agent-runtime.ts", "utf8");
+    expect(runtime).toContain("requiresReviewFlow: boolean");
+    expect(runtime).toContain("function hasReviewFlow");
+    expect(runtime).toContain("Search links are navigation, not a recommendation flow");
+    expect(runtime).toContain("a reason to keep the flow disabled for review, not a reason to omit the suggestion");
+  });
+});

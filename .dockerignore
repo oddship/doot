@@ -1,0 +1,12 @@
+.git
+.github
+.next
+.direnv
+node_modules
+artifacts
+_site
+coverage
+data
+email-cache.sqlite3*
+.env*
+*.log

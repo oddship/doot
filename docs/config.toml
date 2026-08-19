@@ -1,0 +1,37 @@
+site_name = "Doot"
+base_path = "/doot"
+logo = "_static/logo.svg"
+favicon = "_static/favicon.svg"
+footer_text = "Doot is built by [Oddship](https://github.com/oddship). Released under the MIT License."
+disable_moat_citation = false
+
+[highlight]
+light = "github"
+dark = "github-dark"
+
+[search]
+enabled = true
+
+[feed]
+enabled = true
+link = "https://oddship.github.io/doot"
+
+[extra]
+tagline = "a trusted, local-first emissary for your inbox"
+
+[[links]]
+title = "GitHub"
+url = "https://github.com/oddship/doot"
+icon = "github"
+
+[[topnav]]
+title = "Demo"
+url = "https://oddship.github.io/doot/demo/"
+
+[[topnav]]
+title = "Product"
+url = "/02-product/01-product-spec/"
+
+[[topnav]]
+title = "Development"
+url = "/03-development/01-architecture/"
