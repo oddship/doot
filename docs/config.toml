@@ -1,0 +1,17 @@
+site_name = "Doot"
+site_description = "A trusted, local-first emissary for your inbox"
+base_path = "/doot"
+footer = "Doot is built by Oddship. Released under the MIT License."
+highlight = true
+
+[[links]]
+name = "GitHub"
+url = "https://github.com/oddship/doot"
+
+[[topnav]]
+name = "Product"
+url = "/02-product/01-product-spec/"
+
+[[topnav]]
+name = "Development"
+url = "/03-development/01-architecture/"

@@ -1,0 +1,72 @@
+{
+  "name": "doot",
+  "version": "0.1.0",
+  "description": "A local-first email workspace with a safe, approval-driven AI agent.",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://oddship.github.io/doot/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oddship/doot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oddship/doot/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22 <24"
+  },
+  "scripts": {
+    "dev": "NODE_ENV=development node server.mjs",
+    "build": "next build --webpack",
+    "start": "NODE_ENV=production node server.mjs",
+    "test": "vitest run",
+    "test:ui": "node scripts/ui-audit.mjs",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "audit:prod": "npm audit --omit=dev",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "4.0.72",
+    "@earendil-works/pi-coding-agent": "0.84.2",
+    "ai": "7.0.69",
+    "better-sqlite3": "13.0.3",
+    "imapflow": "1.7.1",
+    "lucide-react": "1.33.0",
+    "next": "16.3.1",
+    "postal-mime": "3.0.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "3.10.1",
+    "sanitize-html": "2.17.7",
+    "ws": "8.21.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.9",
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/postcss": "4.1.14",
+    "@testing-library/react": "16.3.0",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "24.3.0",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "@types/sanitize-html": "2.16.0",
+    "@types/ws": "8.18.1",
+    "husky": "^9.1.7",
+    "jsdom": "26.1.0",
+    "lint-staged": "^17.3.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.2",
+    "vitest": "4.1.11"
+  },
+  "lint-staged": {
+    "*.{js,mjs,ts,tsx,json,css}": "biome check --write --no-errors-on-unmatched"
+  },
+  "packageManager": "npm@10.9.2"
+}

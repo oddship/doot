@@ -1,0 +1,28 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Local runtime data and secrets
+email-cache.sqlite3
+email-cache.sqlite3-shm
+email-cache.sqlite3-wal
+data/
+.env
+.env.*
+!.env.example
+
+# Developer tooling
+.direnv/
+result
+artifacts/
+_site/
+playwright-report/
+test-results/
+*.log
+.DS_Store
+__pycache__/
+
+todo.md
