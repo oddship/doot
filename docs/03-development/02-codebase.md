@@ -11,7 +11,7 @@ scripts/             Developer and visual-audit automation
 tests/               Unit and executable architecture-contract tests
 types/               Process-wide TypeScript declarations
 public/              Product marks and static assets
-docs/                Moat documentation source
+docs/                Moat source, pinned base layout, and branded docs theme
 .github/             CI, release, Pages, and contribution automation
 server.mjs           Next.js + WebSocket process entry point
 ```

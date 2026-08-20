@@ -30,8 +30,8 @@ url = "https://oddship.github.io/doot/demo/"
 
 [[topnav]]
 title = "Product"
-url = "/02-product/01-product-spec/"
+url = "/product/product-spec/"
 
 [[topnav]]
 title = "Development"
-url = "/03-development/01-architecture/"
+url = "/development/architecture/"

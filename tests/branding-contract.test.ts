@@ -24,4 +24,19 @@ describe("Doot brand", () => {
     expect(css).toContain("--marigold:#e4a326");
     expect(css).toContain(".brand-copy");
   });
+
+  it("carries the product theme into the Moat documentation", async () => {
+    const layout = await readFile("docs/_layout.html", "utf8");
+    const theme = compactCss(await readFile("docs/_static/theme.css", "utf8"));
+    const oatIndex = layout.indexOf("@knadh/oat/oat.min.css");
+    const themeIndex = layout.indexOf("_static/theme.css");
+
+    expect(oatIndex).toBeGreaterThan(-1);
+    expect(themeIndex).toBeGreaterThan(oatIndex);
+    expect(theme).toContain("--background:#f5f1e8");
+    expect(theme).toContain("--primary:#006d77");
+    expect(theme).toContain("--warning:#b86f12");
+    expect(theme).toContain('html[data-theme="dark"]');
+    expect(theme).toContain("--primary:#e4a326");
+  });
 });

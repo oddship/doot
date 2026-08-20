@@ -12,6 +12,7 @@
       "!artifacts",
       "!_site",
       "!coverage",
+      "!docs/_layout.html",
       "!public"
     ]
   },

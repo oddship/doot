@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ block "title" . }}{{ .Title }} — {{ .SiteName }}{{ end }}</title>
+  {{ if .Description }}<meta name="description" content="{{ .Description }}">{{ end }}
+  {{ if .Favicon }}<link rel="icon" href="{{ .BasePath }}/{{ .Favicon }}">{{ end }}
+  {{ if .FeedEnabled }}<link rel="alternate" type="application/rss+xml" title="{{ .SiteName }}" href="{{ .BasePath }}/feed.xml">{{ end }}
+  <link rel="stylesheet" href="https://unpkg.com/@knadh/oat/oat.min.css">
+  <link rel="stylesheet" href="{{ .BasePath }}/_syntax.css">
+  <script>
+    (function() {
+      var t = localStorage.getItem('theme');
+      if (!t && matchMedia('(prefers-color-scheme: dark)').matches) {
+        t = 'dark';
+      }
+      if (t) {
+        document.documentElement.style.colorScheme = t;
+        document.documentElement.setAttribute('data-theme', t);
+      }
+    })();
+    function toggleTheme() {
+      var cs = document.documentElement.style.colorScheme;
+      var isDark = cs === 'dark' || (!cs && matchMedia('(prefers-color-scheme: dark)').matches);
+      var theme = isDark ? 'light' : 'dark';
+      document.documentElement.style.colorScheme = theme;
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+    }
+  </script>
+  {{ if .SearchEnabled }}
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var _moatBase = "{{ .BasePath }}";
+      var dialog = document.getElementById('search-dialog');
+      if (!dialog) return;
+
+      var input = dialog.querySelector('[data-search-input]');
+      var resultsContainer = dialog.querySelector('[data-search-results]');
+      var status = dialog.querySelector('[data-search-status]');
+      var searchIndex = null;
+      var loading = null;
+
+      function setStatus(text) {
+        status.textContent = text;
+      }
+
+      function closeDialog() {
+        if (dialog.open) dialog.close();
+      }
+
+      function clearResults() {
+        resultsContainer.innerHTML = '';
+      }
+
+      function loadIndex() {
+        if (searchIndex) return Promise.resolve(searchIndex);
+        if (loading) return loading;
+
+        setStatus('Loading search…');
+        loading = fetch(_moatBase + '/_search.json')
+          .then(function(r) {
+            if (!r.ok) throw new Error('failed to load search index');
+            return r.json();
+          })
+          .then(function(data) {
+            loading = null;
+            searchIndex = Array.isArray(data.entries) ? data.entries : [];
+            return searchIndex;
+          })
+          .catch(function() {
+            loading = null;
+            setStatus('Search unavailable');
+          });
+
+        return loading;
+      }
+
+      function scoreEntry(entry, tokens) {
+        var title = (entry.title || '').toLowerCase();
+        var description = (entry.description || '').toLowerCase();
+        var text = (entry.text || '').toLowerCase();
+        var score = 0;
+        var allMatch = true;
+
+        for (var i = 0; i < tokens.length; i++) {
+          var token = tokens[i];
+          var tokenFound = false;
+          if (title.indexOf(token) !== -1) { score += 100; tokenFound = true; }
+          if (description.indexOf(token) !== -1) { score += 25; tokenFound = true; }
+          if (text.indexOf(token) !== -1) { score += 10; tokenFound = true; }
+          if (!tokenFound) { allMatch = false; break; }
+        }
+
+        return allMatch ? score : 0;
+      }
+
+      function entrySummary(entry) {
+        var summary = entry.description || entry.text || '';
+        if (summary.length > 120) return summary.slice(0, 117) + '…';
+        return summary;
+      }
+
+      function renderResults(matches) {
+        var shown = Math.min(matches.length, 8);
+        clearResults();
+
+        if (!matches.length) {
+          setStatus('No results');
+          return;
+        }
+
+        matches.slice(0, shown).forEach(function(entry) {
+          var link = document.createElement('a');
+          link.href = entry.url;
+          link.className = 'search-result';
+
+          var title = document.createElement('strong');
+          title.textContent = entry.title || entry.url;
+          link.appendChild(title);
+
+          var summary = entrySummary(entry);
+          if (summary) {
+            var meta = document.createElement('small');
+            meta.className = 'text-light';
+            meta.textContent = summary;
+            link.appendChild(meta);
+          }
+
+          resultsContainer.appendChild(link);
+        });
+
+        if (shown === matches.length) {
+          setStatus(shown === 1 ? '1 result' : shown + ' results');
+        } else {
+          setStatus('Top ' + shown + ' of ' + matches.length + ' results');
+        }
+      }
+
+      input.addEventListener('input', function() {
+        var query = input.value.trim().toLowerCase();
+        if (query.length < 2) {
+          clearResults();
+          setStatus('Type at least 2 characters');
+          return;
+        }
+
+        var tokens = query.split(/\s+/).filter(Boolean);
+
+        loadIndex().then(function(entries) {
+          if (!entries) return;
+          var matches = entries
+            .map(function(e) { return { entry: e, score: scoreEntry(e, tokens) }; })
+            .filter(function(item) { return item.score > 0; })
+            .sort(function(a, b) {
+              if (b.score !== a.score) return b.score - a.score;
+              return (a.entry.title || '').localeCompare(b.entry.title || '');
+            })
+            .map(function(item) { return item.entry; });
+
+          renderResults(matches);
+        });
+      });
+
+      // Close dialog on Escape from the search input.
+      // type="search" inputs in Chromium swallow Escape to clear the value
+      // before bubbling, requiring two presses. This makes it one.
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeDialog();
+        }
+      });
+
+      resultsContainer.addEventListener('click', function(e) {
+        if (e.target.closest('a')) closeDialog();
+      });
+
+      dialog.addEventListener('close', function() {
+        input.value = '';
+        clearResults();
+        setStatus('Type at least 2 characters');
+      });
+
+      document.addEventListener('keydown', function(e) {
+        if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          var tag = (e.target.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+          if (e.target.isContentEditable) return;
+          e.preventDefault();
+          dialog.showModal();
+        }
+      });
+    });
+  </script>
+  {{ end }}
+  <script src="https://unpkg.com/@knadh/oat/oat.min.js" defer></script>
+  <style>
+    html[data-theme="dark"] .icon-dark { display: none; }
+    html:not([data-theme="dark"]) .icon-light { display: none; }
+    aside footer button { width: 100%; }
+    nav[data-topnav] {
+      font-size: var(--text-7);
+    }
+    nav[data-topnav] a,
+    nav[data-topnav] button {
+      color: var(--muted-foreground);
+    }
+    nav[data-topnav] img {
+      height: 24px;
+    }
+    nav[data-topnav] .hstack {
+      gap: var(--space-6);
+    }
+    {{ if .SearchEnabled }}
+    #search-dialog input[type="search"] { margin: 0; font-size: var(--text-6); }
+    #search-dialog > form > div { padding-block-start: 0; }
+    #search-dialog footer { justify-content: flex-start; }
+    .search-result {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+      padding: var(--space-2) var(--space-3);
+      text-decoration: none;
+      border-radius: var(--radius-small);
+      color: var(--foreground);
+    }
+    .search-result:hover { background-color: var(--accent); }
+    .search-result + .search-result { margin-block-start: var(--space-1); }
+    kbd {
+      display: inline-block;
+      padding: 0 var(--space-1);
+      font-size: var(--text-8);
+      font-family: inherit;
+      background: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-small);
+      line-height: 1.4;
+    }
+    {{ end }}
+  </style>
+  <link rel="stylesheet" href="{{ .BasePath }}/_static/theme.css">
+  {{ block "head" . }}{{ end }}
+</head>
+<body data-sidebar-layout>
+  <nav data-topnav>
+    <div class="row">
+      <div class="col-4 hstack gap-2">
+        <button data-sidebar-toggle aria-label="Toggle sidebar" class="small">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" role="img" aria-label="Menu icon">
+            <line x1="4" y1="7" x2="20" y2="7"></line>
+            <line x1="4" y1="12" x2="20" y2="12"></line>
+            <line x1="4" y1="17" x2="16" y2="17"></line>
+          </svg>
+        </button>
+        <a href="{{ .BasePath }}/" {{ if .Logo }}aria-label="{{ .SiteName }}"{{ end }}>
+          {{ if .LogoInline }}
+            {{ .LogoInline }}
+          {{ else if .Logo }}
+            <img src="{{ .BasePath }}/{{ .Logo }}" height="24" alt="{{ .SiteName }}">
+          {{ else }}
+            <strong>{{ .SiteName }}</strong>
+          {{ end }}
+        </a>
+      </div>
+      <div class="col-8 hstack justify-end">
+        {{ range .TopNav }}
+        <a href="{{ navURL $.BasePath .URL }}">{{ linkIcon .Icon }}{{ .Title }}</a>
+        {{ end }}
+        {{ if .SearchEnabled }}
+        <button class="outline small" commandfor="search-dialog" command="show-modal" aria-label="Search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          Search
+          <kbd>/</kbd>
+        </button>
+        {{ end }}
+        {{ if or .TopNavMore .FeedEnabled }}
+        <ot-dropdown>
+          <button popovertarget="nav-menu" class="outline small">
+            More
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <menu popover id="nav-menu">
+            {{ range .TopNavMore }}
+            <a href="{{ navURL $.BasePath .URL }}" role="menuitem">{{ linkIcon .Icon }}{{ .Title }}</a>
+            {{ end }}
+            {{ if and .TopNavMore .FeedEnabled }}<hr>{{ end }}
+            {{ if .FeedEnabled }}
+            <a href="{{ .BasePath }}/feed.xml" role="menuitem">{{ linkIcon "rss" }}RSS feed</a>
+            {{ end }}
+          </menu>
+        </ot-dropdown>
+        {{ end }}
+      </div>
+    </div>
+  </nav>
+
+  {{ if .SearchEnabled }}
+  <dialog id="search-dialog" closedby="any">
+    <form method="dialog">
+      <header>
+        <fieldset class="group">
+          <input type="search" placeholder="Search docs…" data-search-input autofocus autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button type="button" class="outline icon" commandfor="search-dialog" command="close" aria-label="Close search dialog">×</button>
+        </fieldset>
+      </header>
+      <div data-search-results>
+      </div>
+      <footer>
+        <small class="text-light" data-search-status aria-live="polite">Type at least 2 characters</small>
+      </footer>
+    </form>
+  </dialog>
+  {{ end }}
+
+  <aside data-sidebar class="main-sidebar">
+    {{ .Nav }}
+    <footer>
+      <button class="outline small" onclick="toggleTheme()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-light" role="img" aria-label="Light mode">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-dark" role="img" aria-label="Dark mode">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+        Switch theme
+      </button>
+    </footer>
+  </aside>
+
+  <main>
+    <div class="container">
+      {{ block "content" . }}
+      <article>
+        {{ if .Date }}<p><small class="text-light">{{ formatDate .Date }}</small></p>{{ end }}
+        {{ .Content }}
+      </article>
+      {{ end }}
+      {{ if .Footer }}
+      <footer class="footer text-light mt-6 mb-6">
+        <small>{{ .Footer }}</small>
+      </footer>
+      {{ end }}
+    </div>
+  </main>
+</body>
+</html>
