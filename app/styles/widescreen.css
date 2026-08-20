@@ -1,0 +1,324 @@
+/* Doot messenger mark */
+.brand-mark,
+.agent-mark {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  object-fit: contain;
+  padding: 0;
+}
+.brand-mark {
+  width: 34px;
+  height: 34px;
+}
+
+/* Widescreen application polish */
+body {
+  font-size: 14px;
+}
+.topbar {
+  padding-inline: clamp(24px, 2.1vw, 44px);
+}
+.nav a {
+  font-size: 13px;
+  position: relative;
+}
+.nav a.active {
+  color: var(--ocean-deep);
+}
+.nav a.active::after {
+  color: var(--marigold);
+}
+.nav a.active::before {
+  color: var(--marigold);
+}
+.nav a.active {
+  box-shadow: inset 0 -2px 0 var(--marigold);
+}
+.page {
+  padding: clamp(26px, 1.8vw, 36px) clamp(28px, 2.1vw, 44px);
+}
+.page-head {
+  margin-bottom: 22px;
+}
+.page-head p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.workspace-shell {
+  grid-template-columns: minmax(480px, 36%) minmax(0, 64%);
+}
+.canvas-pane {
+  padding: clamp(26px, 2vw, 38px);
+  min-width: 0;
+}
+.canvas-pane > div {
+  width: 100%;
+  max-width: 1480px;
+  margin-inline: auto;
+}
+.pane-head {
+  min-height: 82px;
+  padding-inline: 22px;
+}
+.conversation {
+  padding: 24px;
+}
+.conversation-empty {
+  max-width: 390px;
+  padding: 28px;
+}
+.conversation-empty .agent-mark {
+  width: 54px;
+  height: 54px;
+}
+.prompt-wrap {
+  padding: 14px 18px 16px;
+}
+.generated-header {
+  margin-bottom: 24px;
+}
+.generated-header p {
+  max-width: 1100px;
+  line-height: 1.55;
+}
+.node-card {
+  min-width: 0;
+}
+.node-card h3 {
+  line-height: 1.35;
+}
+.node-title-row > h3 {
+  min-width: 0;
+}
+.node-title-row > .button {
+  flex: none;
+}
+.message-row {
+  border-radius: 2px;
+}
+.search-link-card > .button {
+  width: 100%;
+}
+.inbox-layout {
+  grid-template-columns: minmax(520px, 35%) minmax(0, 65%);
+}
+.inbox-list,
+.reader-pane {
+  min-width: 0;
+}
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.8fr) minmax(190px, 1fr) 38px auto;
+  align-items: center;
+}
+.mail-item {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  padding: 12px 14px;
+}
+.mail-item > small {
+  padding-left: 8px;
+  white-space: nowrap;
+}
+.reader-empty {
+  background: radial-gradient(circle at center, var(--panel), #ebe6dc 70%);
+}
+.reader-empty > div {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  max-width: 390px;
+  padding: 28px;
+  text-align: center;
+}
+.reader-empty svg {
+  color: var(--accent);
+}
+.reader-empty strong {
+  font-size: 16px;
+  color: var(--ink);
+}
+.reader-empty span {
+  line-height: 1.55;
+}
+.email-header {
+  padding: 26px clamp(28px, 3vw, 48px) 22px;
+}
+.email-header h1 {
+  max-width: 1050px;
+  font-size: clamp(22px, 1.45vw, 28px);
+}
+.renderer-toolbar {
+  padding-inline: clamp(22px, 2vw, 34px);
+}
+.email-body-surface {
+  padding: 32px clamp(28px, 3vw, 52px);
+  background: #fffdf8;
+}
+.email-frame {
+  display: block;
+  width: 100%;
+  min-height: 420px;
+  border: 0;
+  background: #fffdf8;
+}
+.plain-content {
+  max-width: 920px;
+}
+.remote-banner {
+  padding-inline: clamp(22px, 2vw, 34px);
+}
+.selection-bar {
+  max-width: calc(100vw - 48px);
+}
+.rules-layout {
+  grid-template-columns: minmax(350px, 390px) minmax(0, 1fr);
+  gap: 20px;
+}
+.rules-sidebar {
+  top: 88px;
+  max-height: calc(100vh - 112px);
+  overflow: auto;
+}
+.rule-hero,
+.rule-preview {
+  padding: 22px;
+}
+.rule-hero > .node-title-row,
+.rule-preview > .node-title-row {
+  align-items: flex-start;
+}
+.rule-hero > .node-title-row > .action-list,
+.rule-preview > .node-title-row > .action-list {
+  justify-content: flex-end;
+  margin-top: 0;
+}
+.rule-definition {
+  grid-template-columns: minmax(190px, 0.9fr) minmax(260px, 1.25fr) minmax(210px, 1fr) minmax(170px, 0.8fr);
+}
+.rule-message-list > a > div {
+  min-width: 0;
+}
+.rule-message-list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
+  gap: 8px;
+  padding: 10px;
+  background: transparent;
+}
+.session-list > .session-link {
+  min-height: 104px;
+  padding: 16px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.session-list > .session-link:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.session-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-grid {
+  grid-template-columns: minmax(380px, 430px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.history-grid > .history-detail:first-child {
+  position: sticky;
+  top: 88px;
+  max-height: calc(100vh - 116px);
+  overflow: auto;
+}
+.history-detail {
+  min-width: 0;
+  padding: 22px;
+}
+.event-content {
+  overflow-wrap: anywhere;
+}
+.settings-grid {
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.settings-grid > aside {
+  position: sticky;
+  top: 88px;
+}
+.settings-grid > aside .card {
+  padding: 10px;
+}
+.settings-grid > aside .session-link {
+  border-left: 2px solid transparent;
+  border-radius: 2px;
+  padding: 10px 12px;
+}
+.settings-grid > aside .session-link:hover {
+  border-left-color: var(--marigold);
+}
+.settings-main {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.settings-main > #accounts,
+.settings-main > #folders,
+.settings-main > #memory,
+.settings-main > #artifacts {
+  grid-column: 1 / -1;
+}
+.settings-section {
+  min-width: 0;
+  scroll-margin-top: 88px;
+}
+.settings-section#provider,
+.settings-section#agent,
+.settings-section#sync,
+.settings-section#privacy {
+  height: 100%;
+}
+.settings-section .muted {
+  line-height: 1.45;
+}
+.dialog {
+  width: min(620px, calc(100vw - 40px));
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 80px rgba(13, 41, 44, 0.24);
+}
+
+@media (max-width: 1300px) {
+  .workspace-shell {
+    grid-template-columns: minmax(440px, 40%) minmax(0, 60%);
+  }
+  .inbox-layout {
+    grid-template-columns: minmax(480px, 42%) minmax(0, 58%);
+  }
+  .rule-definition {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .session-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 1000px) {
+  .settings-main {
+    display: flex;
+  }
+  .history-grid > .history-detail:first-child {
+    position: static;
+    max-height: none;
+  }
+  .toolbar {
+    grid-template-columns: minmax(160px, 0.8fr) minmax(180px, 1fr) 38px auto;
+  }
+}

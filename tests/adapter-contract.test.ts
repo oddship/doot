@@ -29,4 +29,11 @@ describe("IMAP adapter contract", () => {
     expect(source).toContain('description: readOnly ? "Doot read" : "Confirmed mailbox action"');
     expect(source).toContain("export async function applyMailboxAction");
   });
+  it("hides applied and absent messages from cache-backed reads", async () => {
+    const imap = await readFile("lib/imap.ts", "utf8");
+    const store = await readFile("lib/store.ts", "utf8");
+    expect(imap).toContain("UPDATE messages SET present=0 WHERE account=? AND uid=?");
+    expect(imap).toContain("SELECT * FROM messages WHERE account=? AND uid=? AND present=1");
+    expect(store).toContain("FROM messages WHERE present=1");
+  });
 });

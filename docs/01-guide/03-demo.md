@@ -10,7 +10,7 @@ npm run demo:serve
 npm run demo:screenshot
 ```
 
-`demo-site/fixtures/*.json` contains response-shaped fixtures for the workspace, current conversation, inbox, message reader, Flows, history, and settings APIs. The export-only Next entry mounts the same `WorkspaceClient`, `InboxClient`, `RulesClient`, `HistoryScreen`, `SettingsClient`, and `AppHeader` used by the live application. A frozen transport supplies those components with fixture responses and rejects persistence or mailbox writes.
+`demo-site/fixtures/*.json` contains response-shaped fixtures for the workspace, current conversation, inbox, message reader, Drafts, Flows, history, and settings APIs. The export-only Next entry mounts the same `WorkspaceClient`, `InboxClient`, `DraftsClient`, `RulesClient`, `HistoryScreen`, `SettingsClient`, and `AppHeader` used by the live application. A frozen transport supplies those components with fixture responses and rejects real persistence or mailbox writes.
 
 `scripts/build-static-demo.mjs` runs Next with `output: "export"`, applies the `/doot/demo` Pages base path, and copies the result to `_site/demo`. It also publishes the source payloads below `_frozen-api/` so a reviewer can inspect exactly what feeds the demo. The screenshot command opens that generated output over HTTP, exercises every navigation view, rejects external requests, console errors, missing assets, and horizontal overflow, then writes the README image.
 

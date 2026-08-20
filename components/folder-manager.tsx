@@ -157,11 +157,20 @@ export function FolderManager({ accounts, initialFolders }: { accounts: Account[
           </p>
         </div>
         <div className="folder-head-actions">
-          <Button variant="outline" disabled={!account || loading} onClick={discover}>
+          <Button
+            variant="outline"
+            tooltip="Refresh folders from IMAP"
+            disabled={!account || loading}
+            onClick={discover}
+          >
             <RefreshCw size={15} className={loading ? "spin" : ""} />
             {loading ? "Working…" : "Refresh"}
           </Button>
-          <Button disabled={!account || loading} onClick={() => setEditor({ mode: "create", path: "" })}>
+          <Button
+            tooltip="Create an upstream folder"
+            disabled={!account || loading}
+            onClick={() => setEditor({ mode: "create", path: "" })}
+          >
             <Plus size={15} />
             New {noun}
           </Button>
@@ -213,6 +222,7 @@ export function FolderManager({ accounts, initialFolders }: { accounts: Account[
                             variant="ghost"
                             size="icon"
                             aria-label={`Rename ${noun} ${folder.path}`}
+                            tooltip={`Rename this ${noun}`}
                             disabled={loading}
                             onClick={() => setEditor({ mode: "rename", path: folder.path, original: folder.path })}
                           >
@@ -222,6 +232,7 @@ export function FolderManager({ accounts, initialFolders }: { accounts: Account[
                             variant="ghost"
                             size="icon"
                             aria-label={`${provider === "gmail" ? "Remove label" : "Delete folder"} ${folder.path}`}
+                            tooltip={provider === "gmail" ? "Remove this Gmail label" : "Delete this IMAP folder"}
                             disabled={loading}
                             onClick={() => remove(folder)}
                           >
@@ -275,10 +286,19 @@ export function FolderManager({ accounts, initialFolders }: { accounts: Account[
               Unicode names are supported.
             </span>
             <div className="memory-dialog-actions" style={{ marginTop: 18 }}>
-              <Button type="button" variant="outline" onClick={() => setEditor(null)}>
+              <Button
+                type="button"
+                variant="outline"
+                tooltip="Discard folder name changes"
+                onClick={() => setEditor(null)}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading || !editor.path.trim()}>
+              <Button
+                type="submit"
+                tooltip="Review the upstream folder change"
+                disabled={loading || !editor.path.trim()}
+              >
                 {editor.mode === "rename" ? `Rename ${noun}` : `Create ${noun}`}
               </Button>
             </div>

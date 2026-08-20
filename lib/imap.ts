@@ -1,6 +1,8 @@
 import { type FetchMessageObject, ImapFlow, type ListResponse, type MessageAddressObject } from "imapflow";
 import PostalMime from "postal-mime";
 import { accountByName, dateTimestamp, db, now, type StoredAccount } from "@/lib/database";
+import { buildDraftMime } from "@/lib/draft-mime";
+import type { LocalDraftContent } from "@/lib/drafts";
 import { type FolderMutation, isProtectedMailbox, validateMailboxPath, validateMailboxTarget } from "@/lib/imap-folder";
 import { providerForConnection } from "@/lib/mail-provider";
 import { planMailboxSync } from "@/lib/sync-selection";
@@ -65,6 +67,24 @@ async function withClient<T>(account: StoredAccount, callback: (client: ImapFlow
       client.close();
     }
   }
+}
+
+export async function appendImapDraft(accountName: string, draft: LocalDraftContent) {
+  const account = accountByName(accountName);
+  if (!account) throw new Error("unknown account");
+  return withClient(account, async (client) => {
+    const listed = await client.list();
+    const folder = listed.find((mailbox) => mailbox.specialUse === "\\Drafts")?.path;
+    if (!folder) throw new Error("this IMAP server did not advertise a Drafts folder; discover or configure one first");
+    const result = await client.append(folder, buildDraftMime(account, draft), ["\\Draft"]);
+    if (result === false) throw new Error("the IMAP server rejected the draft");
+    return {
+      account: accountName,
+      folder,
+      uid: result.uid ? String(result.uid) : null,
+      uid_validity: result.uidValidity?.toString() || null,
+    };
+  });
 }
 
 export async function discoverAccountFolders(name: string) {
@@ -295,8 +315,10 @@ export async function syncAccount(input: { name: string; days: number; limit: nu
 export async function readMessage(accountName: string, uid: string) {
   const account = accountByName(accountName);
   if (!account) throw new Error("unknown account");
-  let existing = db.prepare("SELECT * FROM messages WHERE account=? AND uid=?").get(accountName, uid) as any;
-  if (!existing) throw new Error("message is not in the local cache; sync the account first");
+  let existing = db
+    .prepare("SELECT * FROM messages WHERE account=? AND uid=? AND present=1")
+    .get(accountName, uid) as any;
+  if (!existing) throw new Error("message is no longer available in Inbox");
   if (!existing.body_fetched) {
     const parsed = await withMailbox(account, existing.folder || "INBOX", true, async (client) => {
       const metadata = await client.fetchOne(uid, { uid: true, size: true }, { uid: true });
@@ -324,7 +346,10 @@ export async function readMessage(accountName: string, uid: string) {
     db.prepare(
       `UPDATE messages SET body_text=?,body_html=?,attachments_json=?,body_fetched=1,fetched_at=? WHERE account=? AND uid=?`,
     ).run(parsed.text || "", parsed.html || "", JSON.stringify(attachments), now(), accountName, uid);
-    existing = db.prepare("SELECT * FROM messages WHERE account=? AND uid=?").get(accountName, uid) as any;
+    existing = db
+      .prepare("SELECT * FROM messages WHERE account=? AND uid=? AND present=1")
+      .get(accountName, uid) as any;
+    if (!existing) throw new Error("message is no longer available in Inbox");
   }
   const value = { ...existing, attachments: JSON.parse(existing.attachments_json || "[]") };
   delete value.attachments_json;

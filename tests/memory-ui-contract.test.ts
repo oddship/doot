@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { compactSource } from "./source-contract";
+import { compactSource, readApiRoutes } from "./source-contract";
 
 describe("Agent memory management UI", () => {
   it("exposes namespace listing and KV CRUD through the local API", async () => {
-    const route = await readFile("app/api/[...path]/route.ts", "utf8");
+    const route = await readApiRoutes();
     expect(route).toContain('key === "agent/memory" && method === "GET"');
     expect(route).toContain('key === "agent/memory" && method === "PUT"');
     expect(route).toContain('key === "agent/memory" && method === "DELETE"');

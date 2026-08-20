@@ -6,8 +6,10 @@ import {
   ChevronRight,
   FolderInput,
   ImageIcon,
+  LoaderCircle,
   MailOpen,
   Paperclip,
+  Reply,
   Search,
   ShieldCheck,
   Trash2,
@@ -16,9 +18,10 @@ import { useEffect, useState } from "react";
 import { EmailFrame } from "@/components/email-frame";
 import { useToast } from "@/components/feedback";
 import { LocalTime } from "@/components/local-time";
-import { Badge, Button, Dialog, Input, Label, Skeleton, Tabs } from "@/components/ui";
+import { Badge, Button, Dialog, Input, Label, Skeleton, Tabs, Tooltip } from "@/components/ui";
+import { saveAgentHandoff } from "@/lib/client-agent-handoff";
 import { apiJson, errorMessage } from "@/lib/client-api";
-import { replaceClientUrl } from "@/lib/client-navigation";
+import { navigateClient, replaceClientUrl } from "@/lib/client-navigation";
 import { loadSelectedIds, saveSelectedIds } from "@/lib/client-selection";
 import { paginationItems } from "@/lib/pagination";
 
@@ -60,6 +63,7 @@ export function InboxClient({
   const [detail, setDetail] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [proposal, setProposal] = useState<any>(null);
+  const [applyingProposal, setApplyingProposal] = useState(false);
   const [moveChoice, setMoveChoice] = useState<MoveChoice | null>(null);
   const [moveLoading, setMoveLoading] = useState(false);
   const [renderMode, setRenderMode] = useState("Message");
@@ -92,16 +96,44 @@ export function InboxClient({
     if (nextLimit !== 25) params.set("limit", String(nextLimit));
     replaceClientUrl(`/inbox${params.size ? `?${params}` : ""}`);
   };
-  const load = async (nextOffset = offset, nextAccount = account, nextQuery = query, nextLimit = pageSize) => {
+  const load = async (
+    nextOffset = offset,
+    nextAccount = account,
+    nextQuery = query,
+    nextLimit = pageSize,
+    openUid?: string,
+  ): Promise<void> => {
     const value = await apiJson(
       `/api/messages?account=${encodeURIComponent(nextAccount)}&query=${encodeURIComponent(nextQuery)}&offset=${nextOffset}&limit=${nextLimit}`,
       {},
       "Inbox search failed",
     );
+    if (nextOffset > 0 && nextOffset >= value.total) {
+      const correctedOffset = Math.max(0, Math.floor(Math.max(0, value.total - 1) / nextLimit) * nextLimit);
+      return load(correctedOffset, nextAccount, nextQuery, nextLimit, openUid);
+    }
     setData(value);
     setOffset(nextOffset);
-    updateUrl(nextAccount, nextQuery, undefined, nextOffset, nextLimit);
+    updateUrl(nextAccount, nextQuery, openUid, nextOffset, nextLimit);
   };
+  useEffect(() => {
+    const socket = new WebSocket(`ws://${location.host}/ws`);
+    socket.onmessage = (event) => {
+      const value = JSON.parse(event.data);
+      if (value.type !== "cache.refresh" || value.resource !== "messages") return;
+      const affected = new Set(
+        (Array.isArray(value.items) ? value.items : []).map((item: any) => `${item.account}:${item.uid}`),
+      );
+      if (affected.size) updateSelected((current) => current.filter((id) => !affected.has(id)));
+      const removedOpen = Boolean(open && affected.has(`${open.account}:${open.uid}`));
+      if (removedOpen) {
+        setOpen(null);
+        setDetail(null);
+      }
+      void load(offset, account, query, pageSize, removedOpen ? undefined : open?.uid);
+    };
+    return () => socket.close();
+  }, [account, query, offset, pageSize, open?.account, open?.uid]);
   const fetchMessage = async (mail: Mail, remote = false) => {
     setLoading(true);
     try {
@@ -145,14 +177,33 @@ export function InboxClient({
           setRenderMode("Message");
         } catch (error) {
           setDetail({ error: errorMessage(error, "Could not load message") });
+          updateUrl(initialAccount, initialQuery);
         } finally {
           setLoading(false);
         }
       })();
   }, []);
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      document.querySelector(".mail-item.active")?.scrollIntoView({ block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open?.account, open?.uid]);
   const toggle = (mail: Mail) => {
     const id = `${mail.account}:${mail.uid}`;
     updateSelected((old) => (old.includes(id) ? old.filter((value) => value !== id) : [...old, id]));
+  };
+  const openedId = open ? `${open.account}:${open.uid}` : "";
+  const openedSelected = Boolean(openedId && selected.includes(openedId));
+  const draftReply = () => {
+    if (!open) return;
+    if (!openedSelected) updateSelected((current) => [...new Set([openedId, ...current])]);
+    const topic = open.subject ? `“${open.subject}”` : "their message";
+    saveAgentHandoff({
+      prompt: `Draft a reply to ${senderName} about ${topic}. Read the selected email for context, then prepare a local draft for review.`,
+    });
+    navigateClient("/");
   };
   const pageIds = (data.messages || []).map((mail: Mail) => `${mail.account}:${mail.uid}`);
   const pageSelected = pageIds.length > 0 && pageIds.every((id: string) => selected.includes(id));
@@ -222,18 +273,31 @@ export function InboxClient({
     }
   };
   const apply = async () => {
+    if (!proposal || applyingProposal) return;
+    setApplyingProposal(true);
     try {
-      await apiJson(
+      const result = await apiJson<any>(
         "/api/apply",
         { method: "POST", json: { id: proposal.id, confirm: true } },
         "Could not apply proposal",
       );
       setProposal(null);
-      saveSelectedIds([]);
-      setSelected([]);
-      await load();
+      const appliedIds = new Set((result.results || []).map((item: any) => `${item.account}:${item.uid}`));
+      updateSelected((current) => current.filter((id) => !appliedIds.has(id)));
+      const removedOpen = Boolean(open && appliedIds.has(`${open.account}:${open.uid}`));
+      if (removedOpen) {
+        setOpen(null);
+        setDetail(null);
+      }
+      await load(offset, account, query, pageSize, removedOpen ? undefined : open?.uid);
+      if (result.status === "applied")
+        toast.success("Mailbox updated", `${appliedIds.size} message(s) removed from Inbox.`);
+      else
+        toast.info("Mailbox partially updated", `${appliedIds.size} succeeded; ${result.errors?.length || 0} failed.`);
     } catch (error) {
       toast.error("Could not apply proposal", errorMessage(error, "Please try again."));
+    } finally {
+      setApplyingProposal(false);
     }
   };
   const senderName = open?.sender?.replace(/\s*<[^>]+>\s*$/, "").replace(/^"|"$/g, "") || "Message";
@@ -250,14 +314,11 @@ export function InboxClient({
   return (
     <main className="page inbox-page">
       <header className="page-head">
-        <div>
-          <h1>Inbox</h1>
-          <p>
-            Cached headers load instantly. Bodies are fetched only when opened, without intentionally marking mail read.
-          </p>
-        </div>
+        <h1>Inbox</h1>
         <div className="action-list">
-          <Badge>{data.total} cached</Badge>
+          <Tooltip content="Locally cached message headers">
+            <Badge>{data.total} cached</Badge>
+          </Tooltip>
           {data.mailbox?.messages != null && <Badge>{Number(data.mailbox.messages).toLocaleString()} in Inbox</Badge>}
           {data.mailbox?.unseen != null && <Badge>{Number(data.mailbox.unseen).toLocaleString()} unread</Badge>}
         </div>
@@ -288,7 +349,7 @@ export function InboxClient({
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && load(0)}
             />
-            <Button size="icon" variant="outline" onClick={() => load(0)}>
+            <Button size="icon" variant="outline" tooltip="Search cached email headers" onClick={() => load(0)}>
               <Search size={16} />
             </Button>
             <Button
@@ -296,6 +357,7 @@ export function InboxClient({
               variant="outline"
               disabled={!pageIds.length}
               aria-label={pageSelected ? "Clear visible messages" : "Select all visible messages"}
+              tooltip={pageSelected ? "Unselect every visible email" : "Select every visible email"}
               onClick={togglePage}
             >
               <CheckSquare size={15} />
@@ -337,6 +399,7 @@ export function InboxClient({
                 variant="ghost"
                 size="icon"
                 aria-label="Previous page"
+                tooltip="Open the previous page"
                 disabled={currentPage === 1}
                 onClick={() => load((currentPage - 2) * pageSize)}
               >
@@ -363,6 +426,7 @@ export function InboxClient({
                 variant="ghost"
                 size="icon"
                 aria-label="Next page"
+                tooltip="Open the next page"
                 disabled={currentPage === totalPages || data.total === 0}
                 onClick={() => load(currentPage * pageSize)}
               >
@@ -431,8 +495,26 @@ export function InboxClient({
                   <div className="renderer-toolbar">
                     <Tabs tabs={["Message", "Plain text"]} value={renderMode} onChange={setRenderMode} />
                     <div className="renderer-actions">
+                      <Button
+                        variant={openedSelected ? "default" : "outline"}
+                        size="sm"
+                        tooltip={openedSelected ? "Remove from Doot context" : "Allow Doot to read body"}
+                        onClick={() => toggle(open)}
+                      >
+                        <CheckSquare size={14} />
+                        {openedSelected ? "Selected for Doot" : "Select for Doot"}
+                      </Button>
+                      <Button variant="outline" size="sm" tooltip="Draft reply with email context" onClick={draftReply}>
+                        <Reply size={14} />
+                        Draft reply with Doot
+                      </Button>
                       {detail?.has_remote_images && !detail?.remote_images_allowed && (
-                        <Button variant="outline" size="sm" onClick={() => fetchMessage(open, true)}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          tooltip="Allow remote images once"
+                          onClick={() => fetchMessage(open, true)}
+                        >
                           <ImageIcon size={14} />
                           Load images once
                         </Button>
@@ -440,6 +522,7 @@ export function InboxClient({
                       <Button
                         variant="danger"
                         size="sm"
+                        tooltip="Prepare deletion for approval"
                         onClick={() =>
                           void createManualProposal(
                             "delete",
@@ -505,6 +588,7 @@ export function InboxClient({
           <Button
             size="sm"
             variant="outline"
+            tooltip="Clear the entire selection"
             onClick={() => {
               saveSelectedIds([]);
               setSelected([]);
@@ -512,15 +596,21 @@ export function InboxClient({
           >
             Unselect all
           </Button>
-          <Button size="sm" variant="outline" disabled={moveLoading} onClick={() => void prepareMove()}>
+          <Button
+            size="sm"
+            variant="outline"
+            tooltip="Choose a destination folder"
+            disabled={moveLoading}
+            onClick={() => void prepareMove()}
+          >
             <FolderInput size={14} />
             {moveLoading ? "Loading…" : "Move"}
           </Button>
-          <Button size="sm" variant="outline" onClick={() => propose("archive")}>
+          <Button size="sm" variant="outline" tooltip="Prepare archive for approval" onClick={() => propose("archive")}>
             <Archive size={14} />
             Archive
           </Button>
-          <Button size="sm" variant="danger" onClick={() => propose("delete")}>
+          <Button size="sm" variant="danger" tooltip="Prepare deletion for approval" onClick={() => propose("delete")}>
             <Trash2 size={14} />
             Delete
           </Button>
@@ -554,15 +644,32 @@ export function InboxClient({
           <p className="muted">No selectable custom destinations were discovered. Create one in Settings first.</p>
         )}
         <div className="memory-dialog-actions" style={{ marginTop: 18 }}>
-          <Button variant="outline" onClick={() => setMoveChoice(null)}>
+          <Button
+            variant="outline"
+            tooltip="Return without choosing destination"
+            tooltipSide="top"
+            onClick={() => setMoveChoice(null)}
+          >
             Cancel
           </Button>
-          <Button disabled={!moveChoice?.target} onClick={() => void propose("move", moveChoice?.target)}>
+          <Button
+            tooltip="Review before changing the mailbox"
+            tooltipSide="top"
+            disabled={!moveChoice?.target}
+            onClick={() => void propose("move", moveChoice?.target)}
+          >
             Continue
           </Button>
         </div>
       </Dialog>
-      <Dialog open={Boolean(proposal)} title="Confirm mailbox change" onClose={() => setProposal(null)}>
+      <Dialog
+        open={Boolean(proposal)}
+        title="Confirm mailbox change"
+        closeDisabled={applyingProposal}
+        onClose={() => {
+          if (!applyingProposal) setProposal(null);
+        }}
+      >
         <p>
           This will apply <strong>{proposal?.action}</strong> to {proposal?.items?.length} message(s) on the upstream
           mailbox. This action requires your explicit confirmation.
@@ -572,12 +679,32 @@ export function InboxClient({
             Destination: <strong>{proposal.items[0].folder}</strong>
           </p>
         )}
+        {applyingProposal && (
+          <div className="mailbox-apply-status" role="status" aria-live="polite">
+            <LoaderCircle className="spin" size={15} />
+            Updating the mailbox. Keep this dialog open…
+          </div>
+        )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <Button variant="outline" onClick={() => setProposal(null)}>
+          <Button
+            variant="outline"
+            tooltip={applyingProposal ? undefined : "Return without changing email"}
+            tooltipSide="top"
+            disabled={applyingProposal}
+            onClick={() => setProposal(null)}
+          >
             Cancel
           </Button>
-          <Button variant="danger" onClick={apply}>
-            Confirm and apply
+          <Button
+            variant="danger"
+            tooltip={applyingProposal ? undefined : "Apply this reviewed mailbox change"}
+            tooltipSide="top"
+            disabled={applyingProposal}
+            aria-busy={applyingProposal}
+            onClick={apply}
+          >
+            {applyingProposal && <LoaderCircle className="spin" size={14} />}
+            {applyingProposal ? "Applying…" : "Confirm and apply"}
           </Button>
         </div>
       </Dialog>

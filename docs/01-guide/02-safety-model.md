@@ -20,6 +20,8 @@ The agent cannot call the mailbox mutation function. It can prepare a local prop
 
 Sync fetches headers, not bodies. Opening a message uses IMAP `BODY.PEEK[]` so Doot does not intentionally set `\\Seen`. Sanitized HTML renders in a sandboxed iframe; remote images remain blocked unless the user explicitly enables them.
 
+Doot can search cached headers without approval. If a message body is needed and was not already selected, Doot must show a body-access card naming the exact messages and explaining why. Only **Approve and continue** selects those references and permits the safe reader on the next turn; **Not now** reads nothing.
+
 ## Deployment boundary
 
 v0.1 is local-only and single-user. It has no login, CSRF defense for an internet-facing deployment, multi-tenant separation, or secret vault integration. Bind to localhost and secure the SQLite database and backups.

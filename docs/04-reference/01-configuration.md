@@ -10,7 +10,13 @@
 
 `EMAIL_UI_PORT` remains a deprecated compatibility fallback for the port.
 
-Account credentials, provider API keys, privacy behavior, sync limits, model, and reasoning settings are configured in the application and stored in SQLite. API responses redact stored secrets.
+Account credentials, model-provider OAuth tokens or API keys, privacy behavior, sync limits, model, and reasoning settings are configured in the application and stored in SQLite. API responses redact stored secrets.
+
+## Model-provider authentication
+
+Doot does not maintain a provider catalog or implement provider-specific OAuth. Settings lists the providers and login methods exposed by Pi's `ModelRuntime`; a small web adapter relays Pi's generic prompts and status events. Pi owns authorization URLs, device codes, token exchange, refresh, and logout. AI SDK is used for the chat stream and has no provider-login facility.
+
+The SQLite credential store implements Pi's `CredentialStore` interface so refreshed OAuth credentials are persisted through the same SDK path. Credentials are redacted from Settings and JSON responses, but v0.1 does not encrypt secrets inside SQLite. Protect the database, its WAL companions, Docker volume, and backups.
 
 ## Filesystem
 

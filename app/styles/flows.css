@@ -1,0 +1,224 @@
+.rules-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.rules-sidebar {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 8px;
+  position: sticky;
+  top: 92px;
+}
+.rules-summary {
+  display: flex;
+  gap: 6px;
+  padding: 5px 5px 10px;
+}
+.rule-list-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  text-decoration: none;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  padding: 11px;
+  border-radius: 9px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.rule-list-item:hover,
+.rule-list-item.active {
+  background: var(--soft);
+}
+.rule-list-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+}
+.rule-list-item strong,
+.rule-list-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rule-list-item small {
+  color: var(--muted);
+  margin-top: 4px;
+  font-size: 11px;
+}
+.rules-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.rule-hero,
+.rule-preview {
+  padding: 20px;
+}
+.rule-hero h2 {
+  margin: 12px 0 6px;
+  font-size: 22px;
+}
+.rule-badges {
+  display: flex;
+  gap: 6px;
+}
+.rule-badges .badge {
+  gap: 4px;
+}
+.rule-definition {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+.rule-definition > div {
+  padding: 11px;
+  background: var(--soft);
+  border-radius: 9px;
+  min-width: 0;
+}
+.rule-definition span,
+.rule-definition strong,
+.rule-definition code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rule-definition span {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.rule-definition code {
+  white-space: nowrap;
+}
+.rule-preview > .node-title-row {
+  margin-bottom: 14px;
+}
+.rule-match-count {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+.rule-match-count strong {
+  font-size: 28px;
+}
+.rule-match-count span {
+  color: var(--muted);
+}
+.rule-message-list {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.rule-message-list > a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+}
+.rule-message-list > a:last-child {
+  border-bottom: 0;
+}
+.rule-message-list > a:hover {
+  background: var(--soft);
+}
+.rule-message-list strong,
+.rule-message-list span {
+  display: block;
+}
+.rule-message-list span,
+.rule-message-list time {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 3px;
+  white-space: nowrap;
+}
+.rules-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 36px 18px;
+}
+.rules-empty p {
+  font-weight: 700;
+  color: var(--ink);
+  margin: 8px 0 5px;
+}
+.rules-empty span {
+  font-size: 12px;
+}
+.field-help {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 6px;
+}
+.rule-delete-warning {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #feeaea;
+  color: var(--danger);
+  font-weight: 700;
+}
+.selected-rule-context {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.selected-rule-context .badge {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selected-rule-context .button {
+  width: 28px;
+  height: 28px;
+}
+@media (max-width: 1000px) {
+  .rules-layout {
+    grid-template-columns: 1fr;
+  }
+  .rules-sidebar {
+    position: static;
+  }
+  .rule-definition {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .rule-definition {
+    grid-template-columns: 1fr;
+  }
+  .rule-hero > .node-title-row,
+  .rule-preview > .node-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .rule-message-list > a {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

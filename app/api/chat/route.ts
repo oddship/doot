@@ -26,6 +26,7 @@ export async function POST(request: Request) {
         organize: body.organize === true,
         selected: body.selected,
         selectedRule: body.selectedRule,
+        selectedDraft: body.selectedDraft,
       },
       send,
     ),

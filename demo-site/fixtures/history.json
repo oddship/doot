@@ -1,6 +1,30 @@
 {
   "sessions": [
     {
+      "id": "demo-flow-005",
+      "history_kind": "flow",
+      "title": "Scheduled Flow · File transaction receipts",
+      "status": "ready",
+      "event_count": 1,
+      "updated_at": "2026-08-20T09:30:00.000Z"
+    },
+    {
+      "id": "demo-action-006",
+      "history_kind": "action",
+      "title": "Applied archive proposal 24",
+      "status": "complete",
+      "event_count": 1,
+      "updated_at": "2026-08-20T09:25:00.000Z"
+    },
+    {
+      "id": "demo-schedule-007",
+      "history_kind": "schedule",
+      "title": "Created sync schedule",
+      "status": "complete",
+      "event_count": 1,
+      "updated_at": "2026-08-20T09:20:00.000Z"
+    },
+    {
       "id": "demo-session-001",
       "history_kind": "agent",
       "title": "Organize my inbox",

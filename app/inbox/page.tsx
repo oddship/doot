@@ -28,6 +28,8 @@ export default async function InboxPage({
       String((page - 1) * limit),
       "--limit",
       String(limit),
+      "--focus",
+      openUid || "",
     ]),
   ]);
   return (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseWorkspace } from "@/lib/workspace";
-import { applyWorkspacePatch } from "@/lib/workspace-patch";
+import { applyWorkspacePatch, prependTopLevelWorkspaceAdds } from "@/lib/workspace-patch";
 
 const workspace = () => ({
   schemaVersion: 1 as const,
@@ -30,26 +30,48 @@ describe("incremental workspace patches", () => {
   });
 
   it("adds and removes dashboard components", () => {
-    const added = applyWorkspacePatch(workspace(), [
-      {
-        op: "add",
-        path: "/root/children/-",
-        value: {
-          type: "search_link",
-          label: "GitHub failures",
-          query: "from:notifications@github.com failed",
-          count: 3,
+    const added = applyWorkspacePatch(
+      workspace(),
+      prependTopLevelWorkspaceAdds([
+        {
+          op: "add",
+          path: "/root/children/-",
+          value: {
+            type: "search_link",
+            label: "GitHub failures",
+            query: "from:notifications@github.com failed",
+            count: 3,
+          },
         },
-      },
-    ]);
+      ]),
+    );
     const removed = applyWorkspacePatch(added, [{ op: "remove", path: "/root/children/1" }]);
     const parsed = parseWorkspace(removed);
 
     expect(parsed.root.type).toBe("stack");
     if (parsed.root.type === "stack") {
       expect(parsed.root.children).toHaveLength(2);
-      expect(parsed.root.children[1].type).toBe("search_link");
+      expect(parsed.root.children[0].type).toBe("search_link");
     }
+  });
+
+  it("prepends a new update batch without reversing its internal order", () => {
+    const operations = prependTopLevelWorkspaceAdds([
+      { op: "add", path: "/root/children/-", value: { type: "heading", text: "New findings" } },
+      { op: "add", path: "/root/children/-", value: { type: "note", body: "Review this now" } },
+    ]);
+    const parsed = parseWorkspace(applyWorkspacePatch(workspace(), operations));
+
+    expect(operations.map((operation) => operation.path)).toEqual(["/root/children/0", "/root/children/1"]);
+    if (parsed.root.type === "stack")
+      expect(parsed.root.children.slice(0, 2).map((child) => child.type)).toEqual(["heading", "note"]);
+  });
+
+  it("leaves explicit placement unchanged", () => {
+    const operations = prependTopLevelWorkspaceAdds([
+      { op: "add", path: "/root/children/1", value: { type: "note", body: "Place this second" } },
+    ]);
+    expect(operations[0].path).toBe("/root/children/1");
   });
 
   it("requires values for add and replace", () => {

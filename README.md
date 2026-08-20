@@ -19,13 +19,16 @@ Doot is an agent-first email workspace that investigates a local IMAP cache, bui
 - Connects IMAP accounts, discovers provider folders, and incrementally syncs message headers.
 - Searches the complete cache with SQLite FTS5 and fetches bodies only when opened via `BODY.PEEK[]`.
 - Gives the agent paginated search, aggregation, selected-message, proposal, Flow, artifact, and bounded memory tools.
+- Prepares structured local drafts with Doot, then saves them to the account's advertised IMAP Drafts folder only after explicit confirmation.
 - Streams agent reasoning and tool progress into a persistent workspace that survives navigation.
+- Renders agent responses as safe GitHub-flavored Markdown without raw HTML or remote images.
 - Generates safe component specs—never model-authored HTML, CSS, URLs, or event handlers.
-- Replays agent sessions and sync jobs from History.
+- Replays Agent conversations, sync jobs, Flow runs, schedules, proposals, and mailbox actions from a filterable History ledger.
+- Schedules read-only sync or review-only Flow evaluations for once, daily, or weekly execution while Doot is running.
 
 ## Quick start
 
-Requirements: Node.js 22 or 23, npm, and a provider API key for agent features.
+Requirements: Node.js 22 or 23 and npm. Agent features also need a model provider connected through OAuth or an API key.
 
 ```bash
 cp .env.example .env
@@ -33,7 +36,7 @@ npm ci
 npm run dev
 ```
 
-Open <http://127.0.0.1:8765>, add an account in Settings, test it, and sync. Doot stores account credentials and cached mail in the local SQLite database configured by `DOOT_DATABASE_PATH`; protect that file and never commit it.
+Open <http://127.0.0.1:8765>. In Settings, connect a model provider using one of the methods advertised by Pi, select a model, then add and sync an email account. Doot stores provider tokens, account credentials, and cached mail in the local SQLite database configured by `DOOT_DATABASE_PATH`; protect that file and never commit it.
 
 With Nix and direnv:
 
@@ -78,6 +81,8 @@ One Node process owns Next.js, the Pi runtime, SQLite, IMAP operations, API rout
 - Organization is manually initiated; sync and startup do not trigger the model.
 - Generated workspaces contain validated primitives and validated action intents.
 - The agent creates local proposals; only browser-confirmed endpoints apply mailbox writes.
+- An active Flow is reviewed and eligible for attached schedules; scheduled evaluations prepare proposals, never automatic mailbox mutations.
+- Draft composition stays local until the user confirms an IMAP append; Doot never sends messages.
 - Generated organization workspaces may suggest deletion, but deletion remains a manual Inbox proposal and confirmation flow.
 - Remote images are blocked by default; HTML is sanitized and rendered in a sandboxed iframe.
 - Doot is local-only and has no authentication in v0.1.

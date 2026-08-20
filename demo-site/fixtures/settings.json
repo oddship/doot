@@ -29,7 +29,31 @@
     "share_message_content": false,
     "agent_delegation": false
   },
-  "credentials": [{ "provider": "anthropic", "configured": true }],
+  "providers": [
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "configured": true,
+      "credential_type": "oauth",
+      "source": "stored",
+      "methods": [
+        { "type": "api_key", "label": "Anthropic API key" },
+        { "type": "oauth", "label": "Anthropic (Claude Pro/Max)", "subscription": true }
+      ]
+    },
+    {
+      "id": "openai-codex",
+      "name": "OpenAI Codex",
+      "configured": false,
+      "methods": [{ "type": "oauth", "label": "OpenAI (ChatGPT Plus/Pro)", "subscription": true }]
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "configured": false,
+      "methods": [{ "type": "api_key", "label": "OpenAI API key" }]
+    }
+  ],
   "models": [{ "provider": "anthropic", "id": "claude-sonnet", "name": "Claude Sonnet", "reasoning": true }],
   "memoryNamespaces": [{ "namespace": "preferences", "count": 2, "updated_at": "2026-08-20T09:15:00.000Z" }],
   "memoryItems": [

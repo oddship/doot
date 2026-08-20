@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useState } from "react";
 import { AppHeader } from "../../components/app-header";
+import { DraftsClient } from "../../components/drafts-client";
 import { FeedbackProvider } from "../../components/feedback";
 import { HistoryScreen } from "../../components/history-screen";
 import { InboxClient } from "../../components/inbox-client";
@@ -13,6 +14,7 @@ import { CLIENT_NAVIGATION_EVENT } from "../../lib/client-navigation";
 type Json = Record<string, any>;
 export type DemoFixtures = {
   conversation: Json;
+  drafts: Json;
   flows: Json;
   history: Json;
   message: Json;
@@ -36,7 +38,31 @@ function frozenFetch(fixtures: DemoFixtures): typeof window.fetch {
     const path = url.pathname;
 
     if (path === "/api/workspaces/latest") return response(fixtures.workspace);
+    if (path === "/api/drafts" && method === "GET") return response(fixtures.drafts);
+    if (path === "/api/drafts" && method === "POST") return response({ draft: fixtures.drafts.drafts[0] }, 201);
+    if (/^\/api\/drafts\/\d+$/.test(path) && method === "PUT") {
+      const content = JSON.parse(String(init?.body || "{}"));
+      return response({ draft: { ...fixtures.drafts.drafts[0], title: content.subject || "Untitled draft", content } });
+    }
+    if (/^\/api\/drafts\/\d+\/save$/.test(path) && method === "POST")
+      return response({ draft: { ...fixtures.drafts.drafts[0], status: "saved" }, imap: { folder: "Drafts" } });
+    if (/^\/api\/drafts\/\d+$/.test(path) && method === "DELETE") return response({ deleted: 7 });
+    if (path === "/api/schedules" && method === "GET") {
+      const schedules = fixtures.flows.schedules.filter(
+        (item: Json) =>
+          (!url.searchParams.get("kind") || item.kind === url.searchParams.get("kind")) &&
+          (!url.searchParams.get("rule_id") || item.rule_id === Number(url.searchParams.get("rule_id"))),
+      );
+      return response({ schedules });
+    }
+    if (path === "/api/schedules" && method === "POST") return response({ schedule: fixtures.flows.schedules[0] }, 201);
+    if (/^\/api\/schedules\/\d+$/.test(path) && method === "PUT")
+      return response({ schedule: fixtures.flows.schedules[0] });
+    if (/^\/api\/schedules\/\d+$/.test(path) && method === "DELETE") return response({ deleted: 3 });
     if (path === "/api/agent/sessions") return response({ sessions: [] });
+    if (path === "/api/agent/auth/providers" && method === "GET")
+      return response({ providers: fixtures.settings.providers });
+    if (path === "/api/agent/models" && method === "GET") return response({ models: fixtures.settings.models });
     if (path === "/api/messages") return response(fixtures.messages);
     if (path === "/api/message") return response(fixtures.message);
     if (/^\/api\/rules\/\d+\/preview$/.test(path)) {
@@ -114,6 +140,7 @@ class FrozenWebSocket extends EventTarget {
 
 function viewPath(path: string) {
   if (path.startsWith("/inbox")) return "/inbox";
+  if (path.startsWith("/drafts")) return "/drafts";
   if (path.startsWith("/flows") || path.startsWith("/rules")) return "/flows";
   if (path.startsWith("/history")) return "/history";
   if (path.startsWith("/settings")) return "/settings";
@@ -165,6 +192,15 @@ export function DemoClient({ fixtures }: { fixtures: DemoFixtures }) {
           <WorkspaceClient
             initialWorkspace={fixtures.workspace.workspace.spec}
             initialEntries={fixtures.conversation.entries as WorkspaceEntry[]}
+            initialModel={{
+              provider: fixtures.settings.settings.agent_provider,
+              id: fixtures.settings.settings.agent_model,
+              name: fixtures.settings.models.find(
+                (model: Json) =>
+                  model.provider === fixtures.settings.settings.agent_provider &&
+                  model.id === fixtures.settings.settings.agent_model,
+              )?.name,
+            }}
             backgroundUpdates={false}
           />
         )}
@@ -176,6 +212,9 @@ export function DemoClient({ fixtures }: { fixtures: DemoFixtures }) {
             initialOpenUid="8102"
             initialLimit={25}
           />
+        )}
+        {current === "/drafts" && (
+          <DraftsClient initialDrafts={fixtures.drafts.drafts} accounts={fixtures.flows.accounts} initialFocus={7} />
         )}
         {current === "/flows" && (
           <RulesClient

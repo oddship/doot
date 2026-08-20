@@ -2,6 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { isProtectedMailbox, validateMailboxPath } from "@/lib/imap-folder";
+import { readApiRoutes } from "./source-contract";
 
 describe("first-class IMAP folder CRUD", () => {
   it("accepts Unicode paths and rejects empty, oversized, or controlled paths", () => {
@@ -27,7 +28,7 @@ describe("first-class IMAP folder CRUD", () => {
   });
 
   it("requires browser confirmation and keeps the Agent read-only", async () => {
-    const route = await readFile("app/api/[...path]/route.ts", "utf8");
+    const route = await readApiRoutes();
     const client = await readFile("components/folder-manager.tsx", "utf8");
     const runtime = await readFile("lib/agent-runtime.ts", "utf8");
     expect(route).toContain("Explicit confirmation is required for every IMAP folder write");

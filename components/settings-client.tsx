@@ -1,9 +1,11 @@
 "use client";
-import { KeyRound, MailPlus, Save, ShieldCheck } from "lucide-react";
+import { MailPlus, Save, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { FolderManager } from "@/components/folder-manager";
 import { MemoryManager } from "@/components/memory-manager";
+import { ProviderAuthManager } from "@/components/provider-auth-manager";
+import { ScheduleControls } from "@/components/schedule-controls";
 import { Badge, Button, Card, Dialog, Input, Label } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
 
@@ -11,8 +13,8 @@ export function SettingsClient({ initial }: { initial: any }) {
   const toast = useToast();
   const [accounts, setAccounts] = useState(initial.accounts);
   const [settings, setSettings] = useState(initial.settings);
+  const [models, setModels] = useState(initial.models);
   const [editor, setEditor] = useState<any>(null);
-  const [credential, setCredential] = useState({ provider: "", api_key: "" });
   const [notice, setNotice] = useState("");
   const [pendingAccountRemoval, setPendingAccountRemoval] = useState<string | null>(null);
   const [removingAccount, setRemovingAccount] = useState(false);
@@ -71,18 +73,8 @@ export function SettingsClient({ initial }: { initial: any }) {
       toast.error("Could not save settings", errorMessage(error, "Please try again."));
     }
   };
-  const saveCredential = async () => {
-    try {
-      await apiJson("/api/agent/credentials", { method: "PUT", json: credential }, "Could not save credential");
-      setCredential({ provider: "", api_key: "" });
-      setNotice("Credential saved and redacted");
-      toast.success("Credential saved", "The key is redacted after saving.");
-    } catch (error) {
-      toast.error("Could not save credential", errorMessage(error, "Please try again."));
-    }
-  };
   const chooseModel = (value: string) => {
-    const model = initial.models.find((item: any) => `${item.provider}:${item.id}` === value);
+    const model = models.find((item: any) => `${item.provider}:${item.id}` === value);
     setSettings({
       ...settings,
       agent_provider: model?.provider || "",
@@ -92,11 +84,8 @@ export function SettingsClient({ initial }: { initial: any }) {
   return (
     <main className="page">
       <header className="page-head">
-        <div>
-          <h1>Settings</h1>
-          <p>Connections, model behavior, sync limits, privacy, delegation, and Doot memory.</p>
-        </div>
-        <Button onClick={saveSettings}>
+        <h1>Settings</h1>
+        <Button tooltip="Persist every settings section" onClick={saveSettings}>
           <Save size={15} />
           {notice || "Save settings"}
         </Button>
@@ -139,6 +128,8 @@ export function SettingsClient({ initial }: { initial: any }) {
               </div>
               <Button
                 variant="outline"
+                tooltip="Connect another IMAP account"
+                tooltipAlign="right"
                 onClick={() =>
                   setEditor({
                     username: "",
@@ -162,12 +153,18 @@ export function SettingsClient({ initial }: { initial: any }) {
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 7 }}>
-                  <Button variant="ghost" size="sm" onClick={() => test(account.name)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    tooltip="Test IMAP credentials now"
+                    onClick={() => test(account.name)}
+                  >
                     Test
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
+                    tooltip="Change this account connection"
                     onClick={() =>
                       setEditor({
                         ...account,
@@ -178,7 +175,13 @@ export function SettingsClient({ initial }: { initial: any }) {
                   >
                     Edit
                   </Button>
-                  <Button variant="danger" size="sm" onClick={() => remove(account.name)}>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    tooltip="Disconnect but retain cached mail"
+                    tooltipAlign="right"
+                    onClick={() => remove(account.name)}
+                  >
                     Remove
                   </Button>
                 </div>
@@ -186,52 +189,7 @@ export function SettingsClient({ initial }: { initial: any }) {
             ))}
           </Card>
           <FolderManager accounts={accounts} initialFolders={initial.folders || []} />
-          <Card className="settings-section" id="provider">
-            <h2>Provider credentials</h2>
-            <p className="muted">
-              Keys are protected only by local file permissions and are never returned after saving.
-            </p>
-            <div className="form-grid">
-              <div>
-                <Label>Provider ID</Label>
-                <Input
-                  placeholder="openai"
-                  value={credential.provider}
-                  onChange={(event) =>
-                    setCredential({
-                      ...credential,
-                      provider: event.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <Label>API key</Label>
-                <Input
-                  type="password"
-                  placeholder="••••••••"
-                  value={credential.api_key}
-                  onChange={(event) =>
-                    setCredential({
-                      ...credential,
-                      api_key: event.target.value,
-                    })
-                  }
-                />
-              </div>
-            </div>
-            <Button style={{ marginTop: 12 }} variant="outline" onClick={saveCredential}>
-              <KeyRound size={15} />
-              Save credential
-            </Button>
-            <div style={{ marginTop: 10 }}>
-              {initial.credentials.map((item: any) => (
-                <Badge key={item.provider} tone="good">
-                  {item.provider} configured
-                </Badge>
-              ))}
-            </div>
-          </Card>
+          <ProviderAuthManager initialProviders={initial.providers || []} onModels={setModels} />
           <Card className="settings-section" id="agent">
             <h2>Doot model</h2>
             <div className="form-grid">
@@ -245,8 +203,8 @@ export function SettingsClient({ initial }: { initial: any }) {
                   }
                   onChange={(event) => chooseModel(event.target.value)}
                 >
-                  <option value="">Automatic default</option>
-                  {initial.models.map((model: any) => (
+                  <option value="">{models.length ? "Automatic default" : "Connect a provider first"}</option>
+                  {models.map((model: any) => (
                     <option key={`${model.provider}:${model.id}`} value={`${model.provider}:${model.id}`}>
                       {model.provider} · {model.name}
                       {model.reasoning ? " · reasoning" : ""}
@@ -326,6 +284,7 @@ export function SettingsClient({ initial }: { initial: any }) {
               />
             </div>
           </Card>
+          <ScheduleControls kind="sync" />
           <Card className="settings-section" id="privacy">
             <h2>Privacy and delegation</h2>
             <div className="switch-row">
@@ -443,10 +402,12 @@ export function SettingsClient({ initial }: { initial: any }) {
               />
             </label>
             <div className="field-wide" style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <Button variant="outline" onClick={() => setEditor(null)}>
+              <Button variant="outline" tooltip="Discard account connection changes" onClick={() => setEditor(null)}>
                 Cancel
               </Button>
-              <Button onClick={saveAccount}>Save account</Button>
+              <Button tooltip="Store this IMAP connection" onClick={saveAccount}>
+                Save account
+              </Button>
             </div>
           </div>
         )}

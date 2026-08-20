@@ -53,15 +53,18 @@ function parseValue<T = any>(value: string | undefined, message = "invalid JSON"
 
 function dashboard() {
   const totals = db
-    .prepare("SELECT COUNT(*) cached,SUM(CASE WHEN body_fetched=1 THEN 1 ELSE 0 END) bodies FROM messages")
+    .prepare(
+      "SELECT COUNT(*) cached,SUM(CASE WHEN body_fetched=1 THEN 1 ELSE 0 END) bodies FROM messages WHERE present=1",
+    )
     .get();
   const accounts = db
     .prepare(`SELECT m.account,m.account_email,COUNT(*) cached,MAX(s.last_sync) last_sync,MAX(s.last_error) last_error
-    FROM messages m LEFT JOIN sync_state s ON s.account=m.account GROUP BY m.account,m.account_email ORDER BY m.account`)
+    FROM messages m LEFT JOIN sync_state s ON s.account=m.account WHERE m.present=1
+    GROUP BY m.account,m.account_email ORDER BY m.account`)
     .all();
   const recent = db
     .prepare(
-      "SELECT account,account_email,uid,sender,subject,date FROM messages ORDER BY date_ts DESC,CAST(uid AS INTEGER) DESC LIMIT 12",
+      "SELECT account,account_email,uid,sender,subject,date FROM messages WHERE present=1 ORDER BY date_ts DESC,CAST(uid AS INTEGER) DESC LIMIT 12",
     )
     .all();
   const actions = (
@@ -360,6 +363,7 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
         query: option(rest, "--query"),
         offset: numberOption(rest, "--offset", 0),
         limit: numberOption(rest, "--limit", 20),
+        focusUid: option(rest, "--focus"),
         includeBodyFetched: true,
       });
       result.mailbox =
@@ -607,14 +611,20 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       if (!/^[a-z0-9_-]{2,80}$/.test(provider)) throw new Error("invalid provider");
       if (key)
         db.prepare(
-          "INSERT INTO agent_credentials(provider,api_key,updated_at) VALUES(?,?,?) ON CONFLICT(provider) DO UPDATE SET api_key=excluded.api_key,updated_at=excluded.updated_at",
-        ).run(provider, key, now());
+          `INSERT INTO agent_credentials(provider,api_key,auth_type,credential_json,updated_at) VALUES(?,?,?,?,?)
+           ON CONFLICT(provider) DO UPDATE SET api_key=excluded.api_key,auth_type=excluded.auth_type,
+           credential_json=excluded.credential_json,updated_at=excluded.updated_at`,
+        ).run(provider, key, "api_key", JSON.stringify({ type: "api_key", key }), now());
       else db.prepare("DELETE FROM agent_credentials WHERE provider=?").run(provider);
       result = { provider, configured: Boolean(key) };
       break;
     }
     case "agent-keys":
-      result = { credentials: db.prepare("SELECT provider,updated_at FROM agent_credentials ORDER BY provider").all() };
+      result = {
+        credentials: db
+          .prepare("SELECT provider,auth_type type,updated_at FROM agent_credentials ORDER BY provider")
+          .all(),
+      };
       break;
     case "agent-key-values":
       result = { credentials: db.prepare("SELECT provider,api_key FROM agent_credentials").all() };
@@ -624,7 +634,7 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
         id = String(value.id || "");
       if (!/^[A-Za-z0-9-]{8,100}$/.test(id)) throw new Error("invalid session id");
       const timestamp = now(),
-        historyKind = value.kind === "job" ? "job" : "agent",
+        historyKind = ["agent", "job", "flow", "action", "schedule"].includes(value.kind) ? value.kind : "agent",
         status = value.status === "running" ? "running" : "ready";
       db.prepare(
         "INSERT INTO agent_sessions(id,title,history_kind,model_provider,model_id,status,started_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
@@ -673,7 +683,7 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       result = {
         sessions: db
           .prepare(
-            `SELECT s.*,(SELECT COUNT(*) FROM agent_events e WHERE e.session_id=s.id) event_count,(SELECT content FROM agent_events e WHERE e.session_id=s.id AND e.event_type='user_prompt' ORDER BY e.id LIMIT 1) first_prompt FROM agent_sessions s ORDER BY s.updated_at DESC LIMIT 50`,
+            `SELECT s.*,(SELECT COUNT(*) FROM agent_events e WHERE e.session_id=s.id) event_count,(SELECT content FROM agent_events e WHERE e.session_id=s.id AND e.event_type='user_prompt' ORDER BY e.id LIMIT 1) first_prompt FROM agent_sessions s ORDER BY s.updated_at DESC`,
           )
           .all(),
       };
@@ -710,6 +720,13 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
         .prepare("INSERT INTO actions(action,items_json,reason,created_at) VALUES(?,?,?,?)")
         .run(action, JSON.stringify(items), reason, now());
       result = { id: Number(info.lastInsertRowid), action, status: "proposed", items, reason };
+      break;
+    }
+    case "action-get": {
+      const id = Number(required(rest[0], "proposal id is required"));
+      const row = db.prepare("SELECT * FROM actions WHERE id=?").get(id) as any;
+      if (!row) throw new Error("proposal not found");
+      result = { ...row, items: json(row.items_json, []), items_json: undefined };
       break;
     }
     case "apply": {

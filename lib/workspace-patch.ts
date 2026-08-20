@@ -2,6 +2,20 @@ export type WorkspacePatchOperation = { op: "add" | "replace" | "remove"; path: 
 
 const BLOCKED_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
 
+/**
+ * Top-level `/-` additions are a dashboard stack shortcut. A group added in
+ * one update is placed before older content while retaining its authored
+ * heading/content order. Explicit numeric paths keep normal JSON Patch
+ * positioning for targeted edits.
+ */
+export function prependTopLevelWorkspaceAdds(operations: WorkspacePatchOperation[]) {
+  let insertionIndex = 0;
+  return operations.map((operation) => {
+    if (operation.op !== "add" || operation.path !== "/root/children/-") return operation;
+    return { ...operation, path: `/root/children/${insertionIndex++}` };
+  });
+}
+
 function segments(path: string) {
   if (!path.startsWith("/") || path.length > 500) throw new Error("patch path must be a JSON pointer");
   const values = path

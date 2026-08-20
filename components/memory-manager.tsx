@@ -126,6 +126,7 @@ export function MemoryManager({ initialNamespaces }: { initialNamespaces: Namesp
           <p className="muted">Inspect and manage the namespaced JSON memory used by Doot’s tools.</p>
         </div>
         <Button
+          tooltip="Store a durable preference"
           variant="outline"
           onClick={() =>
             setEditor({
@@ -163,7 +164,7 @@ export function MemoryManager({ initialNamespaces }: { initialNamespaces: Namesp
               onChange={(event) => setPrefix(event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && load()}
             />
-            <Button size="icon" variant="outline" onClick={() => load()}>
+            <Button size="icon" variant="outline" tooltip="Filter memory by key" onClick={() => load()}>
               <Search size={15} />
             </Button>
           </div>
@@ -182,6 +183,7 @@ export function MemoryManager({ initialNamespaces }: { initialNamespaces: Namesp
                       <Button
                         size="sm"
                         variant="ghost"
+                        tooltip="Change this remembered value"
                         onClick={() =>
                           setEditor({
                             originalKey: item.key,
@@ -194,7 +196,12 @@ export function MemoryManager({ initialNamespaces }: { initialNamespaces: Namesp
                         <Pencil size={13} />
                         Edit
                       </Button>
-                      <Button size="sm" variant="danger" onClick={() => remove(item)}>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        tooltip="Remove this remembered value"
+                        onClick={() => remove(item)}
+                      >
                         <Trash2 size={13} />
                         Forget
                       </Button>
@@ -248,10 +255,12 @@ export function MemoryManager({ initialNamespaces }: { initialNamespaces: Namesp
               />
             </div>
             <div className="field-wide memory-dialog-actions">
-              <Button variant="outline" onClick={() => setEditor(null)}>
+              <Button variant="outline" tooltip="Discard memory value changes" onClick={() => setEditor(null)}>
                 Cancel
               </Button>
-              <Button onClick={save}>Save memory</Button>
+              <Button tooltip="Store this durable memory value" onClick={save}>
+                Save memory
+              </Button>
             </div>
           </div>
         )}

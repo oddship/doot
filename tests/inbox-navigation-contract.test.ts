@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { compactCss, compactSource } from "./source-contract";
+import { compactCss, compactSource, readAppCss } from "./source-contract";
 
 describe("Inbox deep links", () => {
   it("uses dashboard URL filters for the initial server-side message query", async () => {
@@ -9,6 +9,16 @@ describe("Inbox deep links", () => {
     expect(source).toContain('store<any>([ "list", "--account", account, "--query", query');
     expect(source).toContain("initialAccount={account}");
     expect(source).toContain("initialQuery={query}");
+  });
+
+  it("loads the page containing a directly opened message", async () => {
+    const page = compactSource(await readFile("app/inbox/page.tsx", "utf8"));
+    const store = compactSource(await readFile("lib/store.ts", "utf8"));
+    const database = compactSource(await readFile("lib/database.ts", "utf8"));
+    expect(page).toContain('"--focus", openUid || ""');
+    expect(store).toContain('focusUid: option(rest, "--focus")');
+    expect(database).toContain("Math.floor(rank / limit) * limit");
+    expect(database).toContain("focus_found: focusFound");
   });
 
   it("keeps interactive searches and account changes reflected in the URL", async () => {
@@ -52,11 +62,27 @@ describe("Inbox deep links", () => {
     expect(client).toContain('createManualProposal( "delete"');
     expect(client).toContain('title="Confirm mailbox change"');
     expect(client).toContain("Confirm and apply");
+    expect(client).toContain("applyingProposal");
+    expect(client).toContain("Updating the mailbox. Keep this dialog open");
+    expect(client).toContain('tooltipSide="top"');
+    expect(client).toContain("aria-busy={applyingProposal}");
+    expect(client).toContain("closeDisabled={applyingProposal}");
+    expect(client).toContain("setOpen(null)");
+    expect(client).toContain('value.resource !== "messages"');
+  });
+
+  it("can select the opened message or hand it to Doot for a reply", async () => {
+    const client = await readFile("components/inbox-client.tsx", "utf8");
+    expect(client).toContain("Select for Doot");
+    expect(client).toContain("Draft reply with Doot");
+    expect(client).toContain("saveAgentHandoff");
+    expect(client).toContain('navigateClient("/")');
+    expect(client).toContain('querySelector(".mail-item.active")?.scrollIntoView');
   });
 
   it("offers numbered pages, maximum result options, and a viewport-bounded shell", async () => {
     const source = compactSource(await readFile("components/inbox-client.tsx", "utf8"));
-    const css = compactCss(await readFile("app/globals.css", "utf8"));
+    const css = compactCss(await readAppCss());
     expect(source).toContain('aria-label="Inbox pages"');
     expect(source).toContain("Maximum results per page");
     expect(source).toContain("[25, 50, 100]");

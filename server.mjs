@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -29,6 +30,8 @@ await app.prepare();
 const handle = app.getRequestHandler();
 const server = http.createServer((request, response) => handle(request, response));
 const sockets = new Set();
+const schedulerToken = randomUUID();
+globalThis.__dootSchedulerToken = schedulerToken;
 
 globalThis.__emailAgentBroadcast = (event) => {
   const encoded = JSON.stringify(event);
@@ -47,10 +50,23 @@ server.on("upgrade", (request, socket, head) => {
 });
 const close = (signal) => {
   console.log(`Received ${signal}; shutting down Doot.`);
+  if (schedulerTimer) clearInterval(schedulerTimer);
   wss.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 };
 process.once("SIGINT", () => close("SIGINT"));
 process.once("SIGTERM", () => close("SIGTERM"));
-server.listen(port, hostname, () => console.log(`Doot listening at http://${hostname}:${port}`));
+let schedulerTimer;
+const schedulerTick = () => {
+  void fetch(`http://${hostname}:${port}/api/scheduler/tick`, {
+    method: "POST",
+    headers: { "x-doot-scheduler-token": schedulerToken },
+  }).catch((error) => console.error("Scheduler tick failed:", error.message));
+};
+server.listen(port, hostname, () => {
+  console.log(`Doot listening at http://${hostname}:${port}`);
+  setTimeout(schedulerTick, 1_000).unref();
+  schedulerTimer = setInterval(schedulerTick, 30_000);
+  schedulerTimer.unref();
+});

@@ -37,20 +37,37 @@ async function capture(name, route, prepare) {
 
 await capture("workspace", "/");
 await capture("inbox", "/inbox");
-await capture("inbox-message", "/inbox", async (page) => page.locator(".mail-item").first().click());
+await capture("inbox-message", "/inbox", async (page) => {
+  const message = page.locator(".mail-item").first();
+  if (await message.count()) await message.click();
+});
+await capture("drafts", "/drafts");
 
 const discovery = await context.newPage();
 await discovery.goto(new URL("/flows", baseURL).toString(), { waitUntil: "networkidle" });
-const flowRoute = await discovery.locator('a[href^="/flows/"]').first().getAttribute("href");
+const flowLink = discovery.locator('a[href^="/flows/"]').first();
+const flowRoute = (await flowLink.count()) ? await flowLink.getAttribute("href") : null;
 await discovery.goto(new URL("/history", baseURL).toString(), { waitUntil: "networkidle" });
-const historyRoute = await discovery.locator('a[href^="/history/"]').first().getAttribute("href");
+const historyLink = discovery.locator('a[href^="/history/"]').first();
+const historyRoute = (await historyLink.count()) ? await historyLink.getAttribute("href") : null;
 await discovery.close();
 
-await capture("flows", flowRoute || "/flows");
+await capture("flows", flowRoute || "/flows", async (page) => {
+  const activation = page.getByRole("button", { name: /Mark active|Pause flow/ });
+  if (await activation.count()) await activation.hover();
+});
+await capture("flow-schedule", flowRoute || "/flows", async (page) => {
+  const schedule = page.locator(".schedule-card");
+  if (await schedule.count()) await schedule.scrollIntoViewIfNeeded();
+});
 await capture("history", "/history");
 if (historyRoute) await capture("history-replay", historyRoute);
 await capture("settings", "/settings");
 await capture("settings-controls", "/settings", async (page) => page.locator("#provider").scrollIntoViewIfNeeded());
+await capture("sync-schedule", "/settings", async (page) => {
+  const schedule = page.locator(".schedule-card");
+  if (await schedule.count()) await schedule.scrollIntoViewIfNeeded();
+});
 
 await browser.close();
 await writeFile(path.join(outputDir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);

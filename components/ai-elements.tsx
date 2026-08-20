@@ -15,10 +15,8 @@ export function ConversationEmpty() {
   return (
     <div className="conversation-empty">
       <Image className="agent-mark" src="/doot-mark.svg" alt="" width={44} height={44} />
-      <h2>A trusted emissary for your inbox</h2>
-      <p>
-        Ask Doot a question or organize cached headers into a live, reviewable workspace. Doot prepares; you approve.
-      </p>
+      <h2>Start with a task</h2>
+      <p>Try “find last month’s receipts,” or select messages in Inbox and return here to discuss them.</p>
     </div>
   );
 }
@@ -71,11 +69,13 @@ export function ToolCall({
     </Card>
   );
 }
-export function TaskStatus({ status, detail }: { status: string; detail: string }) {
+export function TaskStatus({ status, detail }: { status: string; detail: ReactNode }) {
   return (
     <div className={cn("task-status", `task-${status}`)}>
       {status === "running" || status === "tool" ? (
         <LoaderCircle className="spin" size={15} />
+      ) : status === "error" ? (
+        <XCircle size={15} />
       ) : (
         <CheckCircle2 size={15} />
       )}
@@ -125,7 +125,13 @@ export function PromptInput({
           }
         }}
       />
-      <Button size="icon" aria-label="Send" disabled={disabled || !value.trim()}>
+      <Button
+        size="icon"
+        aria-label="Send"
+        tooltip="Send message to Doot"
+        tooltipSide="top"
+        disabled={disabled || !value.trim()}
+      >
         <Send size={17} />
       </Button>
     </form>

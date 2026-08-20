@@ -43,6 +43,16 @@ function ActionButton({ action }: { action: { label: string; intent: WorkspaceAc
   const [confirming, setConfirming] = useState(false);
   const [creating, setCreating] = useState(false);
   const intent = action.intent;
+  const help =
+    intent.type === "create_proposal"
+      ? "Prepare a reviewable mailbox proposal"
+      : intent.type === "open_message"
+        ? "Open this cached email"
+        : intent.type === "filter_inbox"
+          ? "Show matching cached email"
+          : intent.type === "open_flow" || intent.type === "open_rule"
+            ? "Open the Flow review"
+            : "Open the saved artifact";
   const createProposal = async () => {
     if (intent.type !== "create_proposal") return;
     setCreating(true);
@@ -68,6 +78,7 @@ function ActionButton({ action }: { action: { label: string; intent: WorkspaceAc
       <Button
         variant={intent.type === "create_proposal" && intent.action === "delete" ? "danger" : "outline"}
         size="sm"
+        tooltip={help}
         onClick={() => (intent.type === "create_proposal" ? setConfirming(true) : runIntent(intent))}
       >
         {intent.type === "create_proposal" ? (
@@ -223,7 +234,12 @@ function Node({ node }: { node: WorkspaceNode }) {
         </div>
         <p className="muted">{node.summary}</p>
         <div className="action-list">
-          <Button variant="outline" size="sm" onClick={() => runIntent({ type: "filter_inbox", query: node.sender })}>
+          <Button
+            variant="outline"
+            size="sm"
+            tooltip="Show this sender in Inbox"
+            onClick={() => runIntent({ type: "filter_inbox", query: node.sender })}
+          >
             View in Inbox
           </Button>
           {node.action && <ActionButton action={node.action} />}
@@ -258,6 +274,7 @@ function Node({ node }: { node: WorkspaceNode }) {
         </div>
         <Button
           variant="outline"
+          tooltip="Show these matches in Inbox"
           onClick={() => runIntent({ type: "filter_inbox", account: node.account, query: node.query })}
         >
           Search Inbox <ExternalLink size={14} />

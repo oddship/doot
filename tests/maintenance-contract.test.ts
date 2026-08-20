@@ -1,6 +1,7 @@
 // @vitest-environment node
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import { readApiRoutes } from "./source-contract";
 
 describe("maintenance boundaries", () => {
   it("keeps rule persistence outside the command router", async () => {
@@ -18,9 +19,19 @@ describe("maintenance boundaries", () => {
     for (const source of [settings, memory, inbox]) expect(source).toContain("apiJson");
   });
 
-  it("centralizes confirmation parsing in the API route", async () => {
-    const route = await readFile("app/api/[...path]/route.ts", "utf8");
-    expect(route).toContain("confirmedBody");
-    expect(route.match(/value\.confirm !== true/g)).toHaveLength(1);
+  it("keeps the API entry point small and centralizes confirmation parsing", async () => {
+    const entry = await readFile("app/api/[...path]/route.ts", "utf8");
+    const routes = await readApiRoutes();
+    expect(entry.split("\n").length).toBeLessThan(40);
+    expect(entry).toContain("API_ROUTE_HANDLERS");
+    expect(routes.match(/value\.confirm !== true/g)).toHaveLength(1);
+  });
+
+  it("composes global styles from bounded responsibility files", async () => {
+    const globals = await readFile("app/globals.css", "utf8");
+    const styles = await readdir("app/styles");
+    expect(globals.split("\n").length).toBeLessThan(30);
+    expect(styles.length).toBeGreaterThan(8);
+    expect(globals).toContain('@import "./styles/foundation.css"');
   });
 });

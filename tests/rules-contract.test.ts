@@ -1,12 +1,12 @@
 // @vitest-environment node
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { compactSource } from "./source-contract";
+import { compactSource, readApiRoutes } from "./source-contract";
 
 describe("first-class email flows", () => {
   it("persists filter/action rules and exposes CRUD, preview, and proposal APIs", async () => {
     const database = await readFile("lib/database.ts", "utf8");
-    const route = await readFile("app/api/[...path]/route.ts", "utf8");
+    const route = await readApiRoutes();
     expect(database).toContain("CREATE TABLE IF NOT EXISTS email_rules");
     expect(route).toContain('key === "rules" && method === "GET"');
     expect(route).toContain('path[2] === "preview"');
@@ -46,7 +46,7 @@ describe("first-class email flows", () => {
 
   it("previews first and keeps execution proposal-only behind final browser approval", async () => {
     const client = compactSource(await readFile("components/rules-client.tsx", "utf8"));
-    const route = compactSource(await readFile("app/api/[...path]/route.ts", "utf8"));
+    const route = compactSource(await readApiRoutes());
     expect(client).toContain("Review &amp; run");
     expect(client).toContain("Approve and run flow");
     expect(client).toContain("The saved flow itself never runs automatically");
@@ -54,6 +54,22 @@ describe("first-class email flows", () => {
     expect(route).toContain('["rule-propose", id]');
     expect(route).toContain('["apply", String(prepared.proposal.id)]');
     expect(client).toContain("confirm: true");
+  });
+
+  it("defines activation as readiness rather than automatic execution", async () => {
+    const [client, guide, rules] = await Promise.all([
+      readFile("components/rules-client.tsx", "utf8"),
+      readFile("docs/01-guide/04-flows.md", "utf8"),
+      readFile("lib/rules.ts", "utf8"),
+    ]);
+    expect(client).toContain("Reviewed; schedules may evaluate it");
+    expect(client).toContain("Mark reviewed and schedulable");
+    expect(client).not.toContain("flow-activation-note");
+    expect(client).toContain("Mark active");
+    expect(guide).toContain("Active means reviewed and eligible for attached schedules");
+    expect(guide).toContain("Scheduled evaluations prepare proposals for review");
+    expect(guide).toContain("Review & run");
+    expect(rules).toContain('enabled ? "active"');
   });
 
   it("directs Agent suggestions into the persisted flow review experience", async () => {

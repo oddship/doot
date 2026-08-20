@@ -30,6 +30,10 @@ export function toolInputSummary(name: string, args: any = {}) {
     return `Analyze ${args.query || "the complete cache"}${args.account && args.account !== "all" ? ` · ${args.account}` : ""}`;
   if (name === "email_suggest_flow") return `${args.action || "review"} · ${args.query || "flow pattern"}`;
   if (name === "email_list_folders") return args.account || "Connected account";
+  if (name === "email_request_body_access")
+    return `${Array.isArray(args.messages) ? args.messages.length : 0} message(s) · ${args.reason || "approval needed"}`;
+  if (name === "email_read_selected")
+    return `${Array.isArray(args.messages) && args.messages.length ? args.messages.length : "Selected"} message body access`;
   if (name.startsWith("memory_")) return [args.namespace, args.key].filter(Boolean).join(" / ") || "Durable memory";
   return "Working with local data…";
 }
@@ -50,6 +54,8 @@ export function toolResultSummary(name: string, result: any, isError = false) {
   if (name === "update_workspace") return `Dashboard updated · ${value.operations_applied || 0} changes`;
   if (name === "get_current_workspace") return `Loaded dashboard ${value.id || ""}`;
   if (name === "email_read_selected") return `${(value.messages || []).length} selected messages read safely`;
+  if (name === "email_request_body_access")
+    return `${(value.messages || []).length} message body request awaiting approval`;
   if (name === "memory_namespaces") return `${(value.namespaces || []).length} memory namespaces`;
   if (name === "memory_list") return `${(value.items || []).length} memory entries`;
   if (name === "memory_get") return value.found ? "Memory retrieved" : "No matching memory";

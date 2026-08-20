@@ -1,13 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { compactCss } from "./source-contract";
+import { compactCss, readAppCss } from "./source-contract";
 
 describe("widescreen UI contract", () => {
   it("uses an active top navigation and a reader-oriented inbox split", async () => {
     const layout = await readFile("app/layout.tsx", "utf8");
     const header = await readFile("components/app-header.tsx", "utf8");
     const nav = await readFile("components/top-nav.tsx", "utf8");
-    const css = compactCss(await readFile("app/globals.css", "utf8"));
+    const css = compactCss(await readAppCss());
     expect(layout).toContain("<AppHeader />");
     expect(header).toContain("<TopNav");
     expect(nav).toContain('aria-current={active ? "page"');

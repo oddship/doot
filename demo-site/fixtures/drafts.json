@@ -1,0 +1,21 @@
+{
+  "drafts": [
+    {
+      "id": 7,
+      "kind": "draft",
+      "title": "Re: August studio invoice",
+      "status": "draft",
+      "created_at": "2026-08-19T09:40:00+00:00",
+      "content": {
+        "account": "alex_at_example_com",
+        "to": ["Maya Rao <maya@paperkite.example>"],
+        "cc": [],
+        "bcc": [],
+        "subject": "Re: August studio invoice",
+        "body": "Hi Maya,\n\nThanks for sending this through. I have reviewed the August invoice and everything looks in order. We will include it in this week’s payment run.\n\nBest,\nAri",
+        "references": [],
+        "context_messages": [{ "account": "alex_at_example_com", "uid": "8102" }]
+      }
+    }
+  ]
+}

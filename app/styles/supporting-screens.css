@@ -1,0 +1,42 @@
+.folder-head-actions,
+.folder-row-tail,
+.folder-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.folder-row-actions .button-icon {
+  width: 31px;
+  min-height: 31px;
+}
+.folder-row-actions .button:last-child {
+  color: var(--danger);
+}
+@media (max-width: 600px) {
+  .folder-head-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .folder-head-actions .button {
+    width: 100%;
+  }
+  .settings-section > .node-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.session-title,
+.history-badges {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.session-title .badge {
+  flex: none;
+}
+.job-account-list {
+  display: flex;
+  flex-direction: column;
+}

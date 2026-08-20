@@ -91,13 +91,25 @@ export function ConfirmDialog({
   onClose: () => void;
 }) {
   return (
-    <Dialog open={open} title={title} onClose={busy ? () => {} : onClose}>
+    <Dialog open={open} title={title} closeDisabled={busy} onClose={busy ? () => {} : onClose}>
       <div className="confirm-dialog-copy">{description}</div>
       <div className="memory-dialog-actions">
-        <Button variant="outline" disabled={busy} onClick={onClose}>
+        <Button
+          variant="outline"
+          tooltip="Close without applying changes"
+          tooltipSide="top"
+          disabled={busy}
+          onClick={onClose}
+        >
           Cancel
         </Button>
-        <Button variant={dangerous ? "danger" : "default"} disabled={busy} onClick={onConfirm}>
+        <Button
+          variant={dangerous ? "danger" : "default"}
+          tooltip="Confirm this reviewed action"
+          tooltipSide="top"
+          disabled={busy}
+          onClick={onConfirm}
+        >
           {busy ? "Working…" : confirmLabel}
         </Button>
       </div>

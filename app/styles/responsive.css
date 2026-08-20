@@ -1,0 +1,96 @@
+@media (max-width: 900px) {
+  .topbar {
+    padding: 0 14px;
+  }
+  .brand {
+    margin-right: 12px;
+  }
+  .nav a {
+    padding: 8px;
+  }
+  .workspace-shell {
+    height: auto;
+    display: block;
+  }
+  .agent-pane {
+    height: 600px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .canvas-pane {
+    min-height: 520px;
+  }
+  .inbox-layout {
+    display: block;
+    height: auto;
+  }
+  .inbox-list {
+    height: 580px;
+    border-right: 0;
+  }
+  .reader-pane {
+    min-height: 520px;
+  }
+  .history-grid,
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .workspace-grid.cols-3,
+  .workspace-grid.cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .page {
+    padding: 18px;
+  }
+}
+@media (max-width: 600px) {
+  .brand span:last-child {
+    display: none;
+  }
+  .top-actions .sync-label {
+    display: none;
+  }
+  .workspace-grid,
+  .workspace-grid.cols-2,
+  .workspace-grid.cols-3,
+  .workspace-grid.cols-4,
+  .form-grid,
+  .memory-toolbar,
+  .folder-grid {
+    grid-template-columns: 1fr;
+  }
+  .canvas-pane {
+    padding: 18px;
+  }
+  .nav a {
+    font-size: 12px;
+    padding: 7px;
+  }
+  .topbar {
+    gap: 3px;
+  }
+  .email-header,
+  .email-body-surface {
+    padding: 20px;
+  }
+  .renderer-toolbar {
+    padding: 10px 14px;
+  }
+  .email-account-row > span {
+    display: none;
+  }
+  .attachment-grid {
+    grid-template-columns: 1fr;
+  }
+  .attachment-section {
+    padding: 18px;
+  }
+  .memory-row-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .folder-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

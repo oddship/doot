@@ -1,5 +1,5 @@
 "use client";
-import { MailCheck, Plus, Sparkles, X } from "lucide-react";
+import { Eye, FilePenLine, MailCheck, Pencil, Plus, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   Artifact,
@@ -12,19 +12,35 @@ import {
   ToolCall,
 } from "@/components/ai-elements";
 import { WorkspaceBoundary } from "@/components/generated-workspace";
+import { MarkdownContent } from "@/components/markdown-content";
 import { Badge, Button } from "@/components/ui";
+import { consumeAgentHandoff } from "@/lib/client-agent-handoff";
 import {
   clearConversationSnapshot,
   loadConversationSnapshot,
   saveConversationSnapshot,
 } from "@/lib/client-conversation";
 import {
+  DRAFT_SELECTION_EVENT,
+  loadSelectedDraft,
+  type SelectedDraftRef,
+  saveSelectedDraft,
+} from "@/lib/client-draft-selection";
+import { navigateClient } from "@/lib/client-navigation";
+import {
   loadSelectedRule,
   RULE_SELECTION_EVENT,
   type SelectedRuleRef,
   saveSelectedRule,
 } from "@/lib/client-rule-selection";
-import { loadSelectedRefs, SELECTION_EVENT } from "@/lib/client-selection";
+import { loadSelectedIds, loadSelectedRefs, SELECTION_EVENT, saveSelectedIds } from "@/lib/client-selection";
+
+type ReadApproval = {
+  id: string;
+  reason: string;
+  messages: Array<{ account: string; uid: string; sender?: string; subject?: string }>;
+  status?: "pending" | "approved" | "denied";
+};
 
 export type WorkspaceEntry = {
   role?: "user" | "assistant" | "system";
@@ -34,7 +50,34 @@ export type WorkspaceEntry = {
   status?: { status: string; detail: string };
   artifact?: any;
   rule?: any;
+  readApproval?: ReadApproval;
 };
+
+export type AgentModelSummary = {
+  provider?: string;
+  id?: string;
+  name?: string;
+};
+
+const MISSING_PROVIDER_ERROR = "Connect a model provider in Settings before starting an Agent conversation.";
+
+function AgentTaskStatus({ status, detail }: { status: string; detail: string }) {
+  const linksToSettings = detail.includes(MISSING_PROVIDER_ERROR);
+  return (
+    <TaskStatus
+      status={status}
+      detail={
+        linksToSettings ? (
+          <button type="button" className="task-status-link" onClick={() => navigateClient("/settings#agent")}>
+            {detail}
+          </button>
+        ) : (
+          detail
+        )
+      }
+    />
+  );
+}
 
 function replayLastTurn(entries: WorkspaceEntry[], data: any): WorkspaceEntry[] {
   const events = Array.isArray(data?.events) ? data.events : [];
@@ -76,6 +119,9 @@ function replayLastTurn(entries: WorkspaceEntry[], data: any): WorkspaceEntry[] 
     }
   });
   const status = data?.session?.status || "complete";
+  const bodyRequest = [...turn]
+    .reverse()
+    .find((event: any) => event.event_type === "body_read_requested" && event.metadata?.request)?.metadata?.request;
   const next = [...entries];
   let index = -1;
   for (let candidate = next.length - 1; candidate >= 0; candidate -= 1) {
@@ -93,6 +139,7 @@ function replayLastTurn(entries: WorkspaceEntry[], data: any): WorkspaceEntry[] 
     ...(text ? { text } : {}),
     ...(reasoning ? { reasoning } : {}),
     ...(tools.size ? { tools: [...tools.values()] } : {}),
+    ...(bodyRequest ? { readApproval: { ...bodyRequest, status: "pending" } } : {}),
     status: {
       status,
       detail:
@@ -109,10 +156,12 @@ function replayLastTurn(entries: WorkspaceEntry[], data: any): WorkspaceEntry[] 
 export function WorkspaceClient({
   initialWorkspace,
   initialEntries = [],
+  initialModel,
   backgroundUpdates = true,
 }: {
   initialWorkspace: any;
   initialEntries?: WorkspaceEntry[];
+  initialModel?: AgentModelSummary | null;
   backgroundUpdates?: boolean;
 }) {
   const [workspace, setWorkspace] = useState(initialWorkspace?.legacy || initialWorkspace);
@@ -121,6 +170,8 @@ export function WorkspaceClient({
   const [running, setRunning] = useState(false);
   const [selectedCount, setSelectedCount] = useState(0);
   const [selectedRule, setSelectedRule] = useState<SelectedRuleRef | null>(null);
+  const [selectedDraft, setSelectedDraft] = useState<SelectedDraftRef | null>(null);
+  const [agentModel, setAgentModel] = useState<AgentModelSummary | null>(initialModel || null);
   const [conversationReady, setConversationReady] = useState(false);
   const [conversationSessionId, setConversationSessionId] = useState<string | undefined>(undefined);
   const session = useRef<string | undefined>(undefined);
@@ -134,6 +185,8 @@ export function WorkspaceClient({
       setEntries(saved.entries as WorkspaceEntry[]);
       setSessionId(saved.sessionId);
     }
+    const handoff = consumeAgentHandoff();
+    if (handoff) setPrompt(handoff.prompt);
     setConversationReady(true);
   }, []);
   useEffect(() => {
@@ -157,6 +210,16 @@ export function WorkspaceClient({
     return () => {
       window.removeEventListener("storage", refresh);
       window.removeEventListener(RULE_SELECTION_EVENT, refresh);
+    };
+  }, []);
+  useEffect(() => {
+    const refresh = () => setSelectedDraft(loadSelectedDraft());
+    refresh();
+    window.addEventListener("storage", refresh);
+    window.addEventListener(DRAFT_SELECTION_EVENT, refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener(DRAFT_SELECTION_EVENT, refresh);
     };
   }, []);
   useEffect(() => {
@@ -188,6 +251,8 @@ export function WorkspaceClient({
         );
       }
       if (!latest || disposed) return;
+      if (latest.model_provider && latest.model_id)
+        setAgentModel({ provider: latest.model_provider, id: latest.model_id });
       if (latest.status === "running") {
         setSessionId(latest.id);
         setRunning(true);
@@ -256,6 +321,7 @@ export function WorkspaceClient({
           sessionId: session.current,
           selected: loadSelectedRefs(),
           selectedRule: loadSelectedRule(),
+          selectedDraft: loadSelectedDraft(),
         }),
       });
       if (!response.ok || !response.body) throw new Error((await response.json()).error || "Doot request failed");
@@ -276,7 +342,16 @@ export function WorkspaceClient({
             const currentRule = loadSelectedRule();
             if (currentRule?.id === event.data?.id) saveSelectedRule({ id: event.data.id, name: event.data.name });
           }
-          if (event.type === "start" && event.messageMetadata?.sessionId) setSessionId(event.messageMetadata.sessionId);
+          if (event.type === "data-artifact" && event.data?.kind === "draft")
+            saveSelectedDraft({ id: event.data.id, title: event.data.title });
+          if (event.type === "start") {
+            if (event.messageMetadata?.sessionId) setSessionId(event.messageMetadata.sessionId);
+            if (event.messageMetadata?.modelProvider && event.messageMetadata?.modelId)
+              setAgentModel({
+                provider: event.messageMetadata.modelProvider,
+                id: event.messageMetadata.modelId,
+              });
+          }
           setEntries((old) => {
             const next = [...old];
             const current = { ...next[next.length - 1] };
@@ -300,6 +375,7 @@ export function WorkspaceClient({
             if (event.type === "data-status") current.status = event.data;
             if (event.type === "data-artifact") current.artifact = event.data;
             if (event.type === "data-rule") current.rule = event.data;
+            if (event.type === "data-read-approval") current.readApproval = { ...event.data, status: "pending" };
             if (event.type === "error") current.status = { status: "error", detail: event.errorText };
             next[next.length - 1] = current;
             return next;
@@ -320,20 +396,48 @@ export function WorkspaceClient({
       setRunning(false);
     }
   };
+  const setReadApprovalStatus = (id: string, status: "approved" | "denied") =>
+    setEntries((current) =>
+      current.map((entry) =>
+        entry.readApproval?.id === id ? { ...entry, readApproval: { ...entry.readApproval, status } } : entry,
+      ),
+    );
+  const approveRead = (request: ReadApproval) => {
+    saveSelectedIds([...request.messages.map((message) => `${message.account}:${message.uid}`), ...loadSelectedIds()]);
+    setReadApprovalStatus(request.id, "approved");
+    void run(
+      `I approved body access for the ${request.messages.length} requested message${request.messages.length === 1 ? "" : "s"}. Read the selected message${request.messages.length === 1 ? "" : "s"} now and continue my task.`,
+    );
+  };
   const newConversation = () => {
     if (running) return;
     setSessionId(undefined);
     setEntries([]);
     setPrompt("");
+    setAgentModel(initialModel || null);
     clearConversationSnapshot();
   };
+  const modelLabel = agentModel?.provider
+    ? `${agentModel.provider} · ${agentModel.name || agentModel.id}`
+    : agentModel?.name || "Automatic";
   return (
     <main className="workspace-shell">
       <section className="agent-pane">
         <div className="pane-head">
-          <div>
+          <div className="pane-title">
             <h1>Doot</h1>
-            <span className="muted">दूत · local inbox emissary · approval-only actions</span>
+            <div className="agent-model-summary">
+              <span>Model</span>
+              <strong title={modelLabel}>{modelLabel}</strong>
+              <Button
+                variant="ghost"
+                size="sm"
+                tooltip="Change model in Settings"
+                onClick={() => navigateClient("/settings#agent")}
+              >
+                <Pencil size={12} /> Edit
+              </Button>
+            </div>
           </div>
           <div className="pane-actions">
             {selectedCount > 0 && (
@@ -352,13 +456,37 @@ export function WorkspaceClient({
                   variant="ghost"
                   size="icon"
                   aria-label="Clear selected flow"
+                  tooltip="Remove Flow from context"
                   onClick={() => saveSelectedRule(null)}
                 >
                   <X size={14} />
                 </Button>
               </div>
             )}
-            <Button variant="outline" size="sm" disabled={running} onClick={newConversation}>
+            {selectedDraft && (
+              <div className="selected-rule-context">
+                <Badge tone="selected" title="This local draft will be included as Doot context">
+                  <FilePenLine size={14} />
+                  Draft: {selectedDraft.title}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Clear selected draft"
+                  tooltip="Remove draft from context"
+                  onClick={() => saveSelectedDraft(null)}
+                >
+                  <X size={14} />
+                </Button>
+              </div>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              tooltip="Start a separate agent thread"
+              disabled={running}
+              onClick={newConversation}
+            >
               <Plus size={14} />
               New conversation
             </Button>
@@ -377,10 +505,20 @@ export function WorkspaceClient({
                   {entry.tools?.map((tool, toolIndex) => (
                     <ToolCall key={toolIndex} {...tool} />
                   ))}
-                  {entry.text && <p style={{ whiteSpace: "pre-wrap", margin: "8px 0 0" }}>{entry.text}</p>}
+                  {entry.text &&
+                    (entry.role === "user" ? (
+                      <p style={{ whiteSpace: "pre-wrap", margin: "8px 0 0" }}>{entry.text}</p>
+                    ) : (
+                      <MarkdownContent>{entry.text}</MarkdownContent>
+                    ))}
                   {entry.artifact && (
                     <Artifact title={entry.artifact.title}>
-                      <p>Saved locally as {entry.artifact.kind}.</p>
+                      <p>
+                        Saved locally as {entry.artifact.kind}.{" "}
+                        {entry.artifact.kind === "draft" && (
+                          <a href={entry.artifact.review_url || `/drafts/${entry.artifact.id}`}>Review draft</a>
+                        )}
+                      </p>
                     </Artifact>
                   )}
                   {entry.rule && (
@@ -390,25 +528,75 @@ export function WorkspaceClient({
                       </p>
                     </Artifact>
                   )}
+                  {entry.readApproval && (
+                    <Artifact title="Message body access">
+                      <div className="body-access-request">
+                        <p>{entry.readApproval.reason}</p>
+                        <ul>
+                          {entry.readApproval.messages.map((message) => (
+                            <li key={`${message.account}:${message.uid}`}>
+                              <strong>{message.subject || "(no subject)"}</strong>
+                              <span>{message.sender || `${message.account} · UID ${message.uid}`}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {entry.readApproval.status === "pending" || !entry.readApproval.status ? (
+                          <div className="body-access-actions">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              tooltip="Continue without reading bodies"
+                              disabled={running}
+                              onClick={() => setReadApprovalStatus(entry.readApproval!.id, "denied")}
+                            >
+                              <X size={14} /> Not now
+                            </Button>
+                            <Button
+                              size="sm"
+                              tooltip="Allow these message bodies"
+                              disabled={running}
+                              onClick={() => approveRead(entry.readApproval!)}
+                            >
+                              <Eye size={14} /> Approve and continue
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className={`body-access-decision ${entry.readApproval.status}`}>
+                            {entry.readApproval.status === "approved" ? <ShieldCheck size={14} /> : <X size={14} />}
+                            {entry.readApproval.status === "approved"
+                              ? "Approved and added to context"
+                              : "Not approved"}
+                          </div>
+                        )}
+                      </div>
+                    </Artifact>
+                  )}
                 </Message>
               )}
-              {entry.status && <TaskStatus {...entry.status} />}
+              {entry.status && <AgentTaskStatus {...entry.status} />}
             </div>
           ))}
         </Conversation>
         <div className="prompt-wrap">
           <div style={{ display: "flex", gap: 8, marginBottom: 9 }}>
-            <Button onClick={() => run("", true)} disabled={running}>
+            <Button
+              tooltip="Analyze inbox and build workspace"
+              tooltipSide="top"
+              onClick={() => run("", true)}
+              disabled={running}
+            >
               <Sparkles size={16} />
               Organize
             </Button>
-            <span className="muted" style={{ alignSelf: "center", fontSize: 12 }}>
-              {selectedRule
-                ? `Ask Doot to refine, rename, or change the action for “${selectedRule.name}”`
-                : selectedCount
-                  ? `${selectedCount} selected email${selectedCount === 1 ? "" : "s"} will be included as context`
-                  : "Runs only when you ask"}
-            </span>
+            {(selectedDraft || selectedRule || selectedCount > 0) && (
+              <span className="muted" style={{ alignSelf: "center", fontSize: 12 }}>
+                {selectedDraft
+                  ? `Ask Doot to compose or revise “${selectedDraft.title}”`
+                  : selectedRule
+                    ? `Ask Doot to refine, rename, or change the action for “${selectedRule.name}”`
+                    : `${selectedCount} selected email${selectedCount === 1 ? "" : "s"} will be included as context`}
+              </span>
+            )}
           </div>
           <PromptInput
             value={prompt}
@@ -431,10 +619,8 @@ export function WorkspaceClient({
           <div className="canvas-empty">
             <div>
               <Sparkles size={28} />
-              <h2>Your generated workspace appears here</h2>
-              <p>
-                Doot can arrange cached mail into safe metrics, clusters, tables, suggestions, and reviewable actions.
-              </p>
+              <h2>No workspace yet</h2>
+              <p>Choose Organize for an inbox overview, or ask a specific question in chat.</p>
             </div>
           </div>
         )}

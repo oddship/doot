@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { compactCss } from "./source-contract";
+import { compactCss, readAppCss } from "./source-contract";
 
 describe("Doot brand", () => {
   it("uses the endorsed product name and messenger positioning", async () => {
@@ -18,7 +18,7 @@ describe("Doot brand", () => {
   });
 
   it("keeps the warm paper, deep-ocean, and marigold visual tokens", async () => {
-    const css = compactCss(await readFile("app/globals.css", "utf8"));
+    const css = compactCss(await readAppCss());
     expect(css).toContain("--bg:#f5f1e8");
     expect(css).toContain("--ocean-deep:#0d292c");
     expect(css).toContain("--marigold:#e4a326");

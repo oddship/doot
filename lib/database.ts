@@ -39,7 +39,9 @@ function openDatabase() {
       password TEXT NOT NULL, port INTEGER NOT NULL DEFAULT 993,
       use_ssl INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS agent_credentials (
-      provider TEXT PRIMARY KEY, api_key TEXT NOT NULL, updated_at TEXT NOT NULL);
+      provider TEXT PRIMARY KEY, api_key TEXT NOT NULL DEFAULT '',
+      auth_type TEXT NOT NULL DEFAULT 'api_key', credential_json TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS agent_views (
       id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL,
       spec_json TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -81,6 +83,18 @@ function openDatabase() {
       status TEXT NOT NULL DEFAULT 'draft', enabled INTEGER NOT NULL DEFAULT 0,
       source TEXT NOT NULL DEFAULT 'manual', rationale TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_matched INTEGER);
+    CREATE TABLE IF NOT EXISTS schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      rule_id INTEGER,
+      frequency TEXT NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'UTC',
+      next_run_at TEXT NOT NULL,
+      last_run_at TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(rule_id) REFERENCES email_rules(id) ON DELETE CASCADE);
     CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
       account UNINDEXED, uid UNINDEXED, sender, subject,
       tokenize='unicode61 remove_diacritics 2');
@@ -102,6 +116,7 @@ function openDatabase() {
     CREATE INDEX IF NOT EXISTS agent_views_session ON agent_views(session_id,id DESC);
     CREATE INDEX IF NOT EXISTS actions_status_created ON actions(status,created_at DESC);
     CREATE INDEX IF NOT EXISTS email_rules_status_updated ON email_rules(status,enabled,updated_at DESC);
+    CREATE INDEX IF NOT EXISTS schedules_due ON schedules(enabled,next_run_at);
   `);
 
   const messageColumns = new Set(
@@ -133,6 +148,13 @@ function openDatabase() {
   );
   if (!sessionColumns.has("history_kind"))
     connection.exec("ALTER TABLE agent_sessions ADD COLUMN history_kind TEXT NOT NULL DEFAULT 'agent'");
+  const credentialColumns = new Set(
+    (connection.prepare("PRAGMA table_info(agent_credentials)").all() as any[]).map((row) => row.name),
+  );
+  if (!credentialColumns.has("auth_type"))
+    connection.exec("ALTER TABLE agent_credentials ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'api_key'");
+  if (!credentialColumns.has("credential_json"))
+    connection.exec("ALTER TABLE agent_credentials ADD COLUMN credential_json TEXT NOT NULL DEFAULT ''");
   connection
     .prepare(`INSERT INTO message_fts(account,uid,sender,subject)
     SELECT m.account,m.uid,m.sender,m.subject FROM messages m
@@ -266,11 +288,32 @@ export function queryMessages(input: {
   days?: number;
   offset?: number;
   limit?: number;
+  focusUid?: string;
   includeBodyFetched?: boolean;
 }) {
   const { where, values } = messageWhere(input);
   const limit = Math.max(1, Math.min(input.limit || 25, 100));
-  const offset = Math.max(0, input.offset || 0);
+  let offset = Math.max(0, input.offset || 0);
+  let focusFound = false;
+  if (input.focusUid && /^\d+$/.test(input.focusUid)) {
+    const focused = db
+      .prepare(`SELECT date_ts,CAST(uid AS INTEGER) uid_number FROM messages${where} AND messages.uid=? LIMIT 1`)
+      .get(...values, input.focusUid) as { date_ts: number; uid_number: number } | undefined;
+    if (focused) {
+      focusFound = true;
+      const rank = Number(
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) count FROM messages${where} AND
+              (messages.date_ts>? OR (messages.date_ts=? AND CAST(messages.uid AS INTEGER)>?))`,
+            )
+            .get(...values, focused.date_ts, focused.date_ts, focused.uid_number) as { count: number }
+        ).count,
+      );
+      offset = Math.floor(rank / limit) * limit;
+    }
+  }
   const fields = `account,account_email,uid,sender,subject,date,date_ts,unread${input.includeBodyFetched ? ",body_fetched" : ""}`;
   const messages = db
     .prepare(`SELECT ${fields} FROM messages${where} ORDER BY date_ts DESC,CAST(uid AS INTEGER) DESC LIMIT ? OFFSET ?`)
@@ -281,6 +324,7 @@ export function queryMessages(input: {
     total,
     offset,
     limit,
+    focus_found: focusFound,
     next_offset: offset + messages.length < total ? offset + messages.length : null,
   };
 }

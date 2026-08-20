@@ -8,9 +8,33 @@ export const Button = React.forwardRef<
   React.ButtonHTMLAttributes<HTMLButtonElement> & {
     variant?: "default" | "outline" | "ghost" | "danger";
     size?: "default" | "sm" | "icon";
+    tooltip?: string;
+    tooltipSide?: "top" | "bottom";
+    tooltipAlign?: "left" | "center" | "right";
   }
->(function Button({ className, variant = "default", size = "default", ...props }, ref) {
-  return <button ref={ref} className={cn("button", `button-${variant}`, `button-${size}`, className)} {...props} />;
+>(function Button(
+  {
+    className,
+    variant = "default",
+    size = "default",
+    tooltip,
+    tooltipSide = "bottom",
+    tooltipAlign = "center",
+    ...props
+  },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      className={cn("button", `button-${variant}`, `button-${size}`, className)}
+      data-tooltip={tooltip}
+      data-tooltip-side={tooltip ? tooltipSide : undefined}
+      data-tooltip-align={tooltip ? tooltipAlign : undefined}
+      aria-description={tooltip}
+      {...props}
+    />
+  );
 });
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("card", className)} {...props} />;
@@ -22,11 +46,29 @@ export function Badge({
 }: React.HTMLAttributes<HTMLSpanElement> & { tone?: string }) {
   return <span className={cn("badge", `badge-${tone}`, className)} {...props} />;
 }
-export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn("input", props.className)} {...props} />;
+export function Tooltip({
+  content,
+  side = "bottom",
+  children,
+}: {
+  content: string;
+  side?: "top" | "bottom";
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="tooltip-root" data-side={side}>
+      {children}
+      <span className="tooltip-content" role="tooltip">
+        {content}
+      </span>
+    </span>
+  );
 }
-export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn("textarea", props.className)} {...props} />;
+export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input className={cn("input", className)} {...props} />;
+}
+export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea className={cn("textarea", className)} {...props} />;
 }
 export function Label(props: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return <label className={cn("label", props.className)} {...props} />;
@@ -42,19 +84,31 @@ export function Dialog({
   title,
   children,
   onClose,
+  closeDisabled = false,
 }: {
   open: boolean;
   title: string;
   children: React.ReactNode;
   onClose: () => void;
+  closeDisabled?: boolean;
 }) {
   if (!open) return null;
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onMouseDown={(e) => e.target === e.currentTarget && !closeDisabled && onClose()}
+    >
       <div className="dialog" role="dialog" aria-modal="true" aria-label={title}>
         <div className="dialog-head">
           <h2>{title}</h2>
-          <Button variant="ghost" onClick={onClose}>
+          <Button
+            variant="ghost"
+            tooltip={closeDisabled ? undefined : "Close this dialog"}
+            tooltipSide="top"
+            disabled={closeDisabled}
+            onClick={onClose}
+          >
             Close
           </Button>
         </div>
@@ -80,7 +134,7 @@ export function Sheet({
       <aside className="sheet" role="dialog" aria-modal="true" aria-label={title}>
         <div className="dialog-head">
           <h2>{title}</h2>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" tooltip="Close this side panel" tooltipSide="top" onClick={onClose}>
             Close
           </Button>
         </div>

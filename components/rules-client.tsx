@@ -16,7 +16,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { LocalTime } from "@/components/local-time";
-import { Badge, Button, Card, Dialog, Input, Label, Textarea } from "@/components/ui";
+import { ScheduleControls } from "@/components/schedule-controls";
+import { Badge, Button, Card, Dialog, Input, Label, Textarea, Tooltip } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
 import { navigateClient, replaceClientUrl } from "@/lib/client-navigation";
 import { saveSelectedRule } from "@/lib/client-rule-selection";
@@ -25,6 +26,22 @@ import type { EmailRule as Rule } from "@/lib/rules";
 
 type Mail = { account: string; account_email: string; uid: string; sender: string; subject: string; date: string };
 type Account = { name: string; email: string; provider?: MailProvider };
+
+function FlowStatus({ rule, side = "bottom" }: { rule: Rule; side?: "top" | "bottom" }) {
+  const label = rule.enabled ? "Active" : rule.status;
+  const help = rule.enabled
+    ? "Reviewed; schedules may evaluate it"
+    : rule.status === "suggested"
+      ? "Waiting for your review"
+      : rule.status === "paused"
+        ? "Not marked ready for runs"
+        : "Saved but not marked active";
+  return (
+    <Tooltip content={help} side={side}>
+      <Badge tone={rule.enabled ? "good" : rule.status === "suggested" ? "attention" : "neutral"}>{label}</Badge>
+    </Tooltip>
+  );
+}
 
 export function RulesClient({
   initialRules,
@@ -99,6 +116,8 @@ export function RulesClient({
         "Could not update flow",
       );
       replaceRule(value.rule);
+      if (rule.enabled) toast.info("Flow paused", "Manual runs remain available.");
+      else toast.success("Flow marked active", "It will not run automatically.");
     } catch (error) {
       toast.error("Could not update flow", errorMessage(error, "Please try again."));
     }
@@ -192,14 +211,8 @@ export function RulesClient({
   return (
     <main className="page rules-page">
       <header className="page-head">
-        <div>
-          <h1>Flows</h1>
-          <p>
-            Reusable filters with proposal-only archive, move, or delete actions. Nothing changes upstream without
-            confirmation.
-          </p>
-        </div>
-        <Button onClick={() => openEditor()}>
+        <h1>Flows</h1>
+        <Button tooltip="Create a reusable filter" onClick={() => openEditor()}>
           <Plus size={15} />
           New flow
         </Button>
@@ -207,8 +220,12 @@ export function RulesClient({
       <div className="rules-layout">
         <aside className="rules-sidebar">
           <div className="rules-summary">
-            <Badge tone="good">{rules.filter((rule) => rule.enabled).length} active</Badge>
-            <Badge>{rules.filter((rule) => rule.status === "suggested").length} suggested</Badge>
+            <Tooltip content="Reviewed; schedules may evaluate it">
+              <Badge tone="good">{rules.filter((rule) => rule.enabled).length} active</Badge>
+            </Tooltip>
+            <Tooltip content="Waiting for your review">
+              <Badge>{rules.filter((rule) => rule.status === "suggested").length} suggested</Badge>
+            </Tooltip>
           </div>
           {rules.length ? (
             rules.map((rule) => (
@@ -238,9 +255,7 @@ export function RulesClient({
                     {rule.target_folder ? ` to ${rule.target_folder}` : ""}
                   </small>
                 </span>
-                <Badge tone={rule.enabled ? "good" : rule.status === "suggested" ? "attention" : "neutral"}>
-                  {rule.enabled ? "Active" : rule.status}
-                </Badge>
+                <FlowStatus rule={rule} side="top" />
               </Link>
             ))
           ) : (
@@ -258,9 +273,7 @@ export function RulesClient({
                 <div className="node-title-row">
                   <div>
                     <div className="rule-badges">
-                      <Badge tone={active.enabled ? "good" : active.status === "suggested" ? "attention" : "neutral"}>
-                        {active.enabled ? "Active" : active.status}
-                      </Badge>
+                      <FlowStatus rule={active} />
                       {active.source === "agent" && (
                         <Badge>
                           <Sparkles size={11} />
@@ -276,18 +289,22 @@ export function RulesClient({
                     <p className="muted">{active.rationale || "No rationale provided."}</p>
                   </div>
                   <div className="action-list">
-                    <Button variant="outline" onClick={() => askAgent(active)}>
+                    <Button variant="outline" tooltip="Open this Flow in chat" onClick={() => askAgent(active)}>
                       <MessageSquare size={14} />
                       Ask Doot to modify
                     </Button>
-                    <Button variant="outline" onClick={() => openEditor(active)}>
+                    <Button variant="outline" tooltip="Change filter or action" onClick={() => openEditor(active)}>
                       Edit
                     </Button>
-                    <Button variant="outline" onClick={() => toggle(active)}>
+                    <Button
+                      variant="outline"
+                      tooltip={active.enabled ? "Pause attached schedule evaluations" : "Mark reviewed and schedulable"}
+                      onClick={() => toggle(active)}
+                    >
                       {active.enabled ? <Pause size={14} /> : <Play size={14} />}
-                      {active.enabled ? "Pause" : "Activate"}
+                      {active.enabled ? "Pause flow" : "Mark active"}
                     </Button>
-                    <Button variant="danger" onClick={() => remove(active)}>
+                    <Button variant="danger" tooltip="Remove Flow; keep email" onClick={() => remove(active)}>
                       <Trash2 size={14} />
                       Delete flow
                     </Button>
@@ -321,15 +338,29 @@ export function RulesClient({
                     </p>
                   </div>
                   <div className="action-list">
-                    <Button variant="outline" onClick={() => loadPreview(active)} disabled={previewing}>
+                    <Button
+                      variant="outline"
+                      tooltip="Recheck current cached matches"
+                      onClick={() => loadPreview(active)}
+                      disabled={previewing}
+                    >
                       <Eye size={14} />
                       {previewing ? "Checking…" : "Refresh preview"}
                     </Button>
-                    <a className="button button-outline button-sm" href={inboxUrl(active)}>
+                    <a
+                      className="button button-outline button-sm"
+                      href={inboxUrl(active)}
+                      data-tooltip="Show matches in Inbox"
+                      data-tooltip-side="bottom"
+                    >
                       <Search size={14} />
                       Open filter
                     </a>
-                    <Button onClick={() => reviewRun(active)} disabled={!preview?.total}>
+                    <Button
+                      tooltip="Review approval before mailbox changes"
+                      onClick={() => reviewRun(active)}
+                      disabled={!preview?.total}
+                    >
                       <Play size={14} />
                       Review &amp; run
                     </Button>
@@ -367,6 +398,7 @@ export function RulesClient({
                   </div>
                 )}
               </Card>
+              <ScheduleControls kind="flow" ruleId={active.id} />
             </>
           ) : (
             <div className="rules-empty">
@@ -461,10 +493,12 @@ export function RulesClient({
               />
             </div>
             <div className="field-wide memory-dialog-actions">
-              <Button variant="outline" onClick={() => setEditor(null)}>
+              <Button variant="outline" tooltip="Discard unsaved Flow changes" onClick={() => setEditor(null)}>
                 Cancel
               </Button>
-              <Button onClick={save}>Save flow</Button>
+              <Button tooltip="Store without running it" onClick={save}>
+                Save flow
+              </Button>
             </div>
           </div>
         )}
@@ -513,10 +547,14 @@ export function RulesClient({
           </div>
         ) : null}
         <div className="memory-dialog-actions">
-          <Button variant="outline" onClick={() => setProposal(null)}>
+          <Button variant="outline" tooltip="Return without changing email" onClick={() => setProposal(null)}>
             Cancel
           </Button>
-          <Button variant={proposal?.rule?.action === "delete" ? "danger" : "default"} onClick={apply}>
+          <Button
+            variant={proposal?.rule?.action === "delete" ? "danger" : "default"}
+            tooltip="Apply this reviewed batch"
+            onClick={apply}
+          >
             Approve and run
           </Button>
         </div>

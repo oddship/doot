@@ -72,6 +72,8 @@ export function SyncButton({ icon }: { icon: ReactNode }) {
       onClick={sync}
       disabled={status === "running"}
       title={failure || undefined}
+      tooltip={failure || "Fetch new message headers"}
+      tooltipAlign="right"
     >
       {icon}
       <span className="sync-label">{label}</span>

@@ -2,7 +2,7 @@ services:
   doot:
     build: .
     ports:
-      - "${DOOT_PORT:-8765}:8765"
+      - "127.0.0.1:${DOOT_PORT:-8765}:8765"
     environment:
       DOOT_HOST: 0.0.0.0
       DOOT_PORT: 8765

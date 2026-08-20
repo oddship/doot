@@ -51,6 +51,29 @@
     { "account": "alex_at_example_com", "path": "Transactions", "flags": [], "rule_target_allowed": true },
     { "account": "work_at_example_com", "path": "Reading", "flags": [], "rule_target_allowed": true }
   ],
+  "schedules": [
+    {
+      "id": 3,
+      "kind": "flow",
+      "rule_id": 12,
+      "rule_name": "File transaction receipts",
+      "frequency": "weekly",
+      "timezone": "Asia/Kolkata",
+      "next_run_at": "2026-08-24T03:30:00.000Z",
+      "last_run_at": null,
+      "enabled": true
+    },
+    {
+      "id": 5,
+      "kind": "sync",
+      "rule_id": null,
+      "frequency": "daily",
+      "timezone": "Asia/Kolkata",
+      "next_run_at": "2026-08-21T02:30:00.000Z",
+      "last_run_at": "2026-08-20T02:30:00.000Z",
+      "enabled": true
+    }
+  ],
   "previews": {
     "12": {
       "total": 84,

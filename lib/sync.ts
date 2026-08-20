@@ -15,7 +15,7 @@ export function getSyncJob() {
   return job;
 }
 
-export async function startSync() {
+export async function startSync(input: { trigger?: "manual" | "schedule"; scheduleId?: number } = {}) {
   if (job.status === "running") return job;
   const [{ accounts }, { settings }] = await Promise.all([store<any>(["accounts"]), store<any>(["settings-get"])]);
   const id = `sync-${randomUUID()}`;
@@ -29,7 +29,12 @@ export async function startSync() {
   };
   await store([
     "session-start",
-    JSON.stringify({ id, kind: "job", title: `Sync mail · ${accounts.length} accounts`, status: "running" }),
+    JSON.stringify({
+      id,
+      kind: "job",
+      title: `${input.trigger === "schedule" ? "Scheduled sync" : "Sync mail"} · ${accounts.length} accounts`,
+      status: "running",
+    }),
   ]);
   await store([
     "session-event",
@@ -37,7 +42,12 @@ export async function startSync() {
       session_id: id,
       event_type: "job_started",
       content: `Syncing ${accounts.length} connected accounts`,
-      metadata: { sync_days: settings.sync_days, per_account_limit: settings.initial_sync_limit },
+      metadata: {
+        trigger: input.trigger || "manual",
+        schedule_id: input.scheduleId,
+        sync_days: settings.sync_days,
+        per_account_limit: settings.initial_sync_limit,
+      },
     }),
   ]);
   emitBackground({ type: "sync.status", job });
