@@ -9,7 +9,7 @@ const inboxQuery = z
     'Inbox search using plain sender/subject terms and the supported operators from:, sender:, subject:, and domain:. Quote multi-word operator values, for example from:notifications@github.com "Run failed" or subject:"Payment received".',
   );
 
-export const workspaceActionIntentSchema = z.discriminatedUnion("type", [
+const workspaceActionIntentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("open_message"), account: short, uid: z.string().regex(/^\d+$/) }).strict(),
   z.object({ type: z.literal("filter_inbox"), account: short.optional(), query: inboxQuery.optional() }).strict(),
   z
@@ -64,7 +64,7 @@ export type WorkspaceNode =
   | { type: "note"; title?: string; body: string; tone?: "neutral" | "good" | "attention" }
   | { type: "action_group"; title?: string; actions: z.infer<typeof action>[] };
 
-export const workspaceNodeSchema: z.ZodType<WorkspaceNode> = z.lazy(() =>
+const workspaceNodeSchema: z.ZodType<WorkspaceNode> = z.lazy(() =>
   z.discriminatedUnion("type", [
     z
       .object({

@@ -14,7 +14,7 @@ Account credentials, model-provider OAuth tokens or API keys, privacy behavior, 
 
 ## Model-provider authentication
 
-Doot does not maintain a provider catalog or implement provider-specific OAuth. Settings lists the providers and login methods exposed by Pi's `ModelRuntime`; a small web adapter relays Pi's generic prompts and status events. Pi owns authorization URLs, device codes, token exchange, refresh, and logout. AI SDK is used for the chat stream and has no provider-login facility.
+Doot does not maintain a provider catalog or implement provider-specific OAuth. Settings lists the providers and login methods exposed by Pi's `ModelRuntime`; a small web adapter relays Pi's generic prompts and status events. Pi owns authorization URLs, device codes, token exchange, refresh, and logout. The chat route emits an AI SDK-compatible UI message stream, but provider login remains entirely outside that protocol.
 
 The SQLite credential store implements Pi's `CredentialStore` interface so refreshed OAuth credentials are persisted through the same SDK path. Credentials are redacted from Settings and JSON responses, but v0.1 does not encrypt secrets inside SQLite. Protect the database, its WAL companions, Docker volume, and backups.
 

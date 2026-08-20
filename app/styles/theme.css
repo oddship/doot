@@ -195,9 +195,6 @@ select:focus {
   letter-spacing: 0.06em;
   font-size: 10px;
 }
-.separator {
-  background: var(--line);
-}
 .workspace-shell {
   background: var(--bg);
 }
@@ -328,12 +325,10 @@ select:focus {
   color: var(--accent);
 }
 .dialog,
-.sheet,
 .toast {
   background: var(--panel);
 }
-.dialog-backdrop,
-.sheet-backdrop {
+.dialog-backdrop {
   background: rgba(13, 41, 44, 0.62);
 }
 .toast {

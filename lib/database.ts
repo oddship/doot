@@ -3,7 +3,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { escapedLikeContains, parseSearchQuery } from "@/lib/search-query";
 
-export const DB_PATH = process.env.DOOT_DATABASE_PATH || path.join(process.cwd(), "email-cache.sqlite3");
+const DB_PATH = process.env.DOOT_DATABASE_PATH || path.join(process.cwd(), "email-cache.sqlite3");
 
 type GlobalDatabase = typeof globalThis & { __emailAgentDatabase?: Database.Database };
 const globalDatabase = globalThis as GlobalDatabase;
@@ -221,7 +221,7 @@ export function settingsValue() {
   return values;
 }
 
-export function safeFtsQuery(value: unknown) {
+function safeFtsQuery(value: unknown) {
   const tokens =
     String(value || "")
       .match(/[A-Za-z0-9_]+/g)

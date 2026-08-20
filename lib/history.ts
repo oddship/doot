@@ -38,33 +38,3 @@ export function startHistory(input: {
   })();
   return id;
 }
-
-export function appendHistory(
-  id: string,
-  input: {
-    event_type: string;
-    content?: string;
-    metadata?: Record<string, unknown>;
-    status?: "ready" | "running" | "complete" | "error";
-    error?: string;
-  },
-) {
-  const timestamp = now();
-  db.transaction(() => {
-    db.prepare(
-      "INSERT INTO agent_events(session_id,event_type,content,metadata_json,created_at) VALUES(?,?,?,?,?)",
-    ).run(
-      id,
-      input.event_type.slice(0, 80),
-      String(input.content || "").slice(0, 100_000),
-      JSON.stringify(input.metadata || {}),
-      timestamp,
-    );
-    db.prepare("UPDATE agent_sessions SET status=COALESCE(?,status),updated_at=?,error=? WHERE id=?").run(
-      input.status || null,
-      timestamp,
-      input.error || null,
-      id,
-    );
-  })();
-}

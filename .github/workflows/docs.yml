@@ -6,12 +6,14 @@ on:
     paths:
       - "docs/**"
       - "demo-site/**"
-      - "components/ui.tsx"
+      - "components/**"
       - "app/globals.css"
+      - "app/styles/**"
+      - "lib/**"
       - "public/doot-mark.svg"
       - "scripts/build-static-demo.mjs"
-      - "scripts/serve-static-demo.mjs"
       - "package.json"
+      - "package-lock.json"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 

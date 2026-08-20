@@ -14,7 +14,7 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=22 <24"
+    "node": ">=22 <23"
   },
   "scripts": {
     "dev": "NODE_ENV=development node server.mjs",
@@ -35,9 +35,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@ai-sdk/react": "4.0.72",
     "@earendil-works/pi-coding-agent": "0.84.2",
-    "ai": "7.0.69",
     "better-sqlite3": "13.0.3",
     "imapflow": "1.7.1",
     "lucide-react": "1.33.0",
@@ -46,7 +44,6 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-markdown": "10.1.0",
-    "recharts": "3.10.1",
     "remark-gfm": "4.0.1",
     "sanitize-html": "2.17.7",
     "ws": "8.21.3",
@@ -56,7 +53,6 @@
     "@biomejs/biome": "^2.5.9",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "4.1.14",
-    "@testing-library/react": "16.3.0",
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "24.3.0",
     "@types/react": "19.1.10",

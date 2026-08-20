@@ -29,9 +29,9 @@ describe("maintenance boundaries", () => {
 
   it("composes global styles from bounded responsibility files", async () => {
     const globals = await readFile("app/globals.css", "utf8");
-    const styles = await readdir("app/styles");
+    const styles = (await readdir("app/styles")).filter((file) => file.endsWith(".css"));
     expect(globals.split("\n").length).toBeLessThan(30);
     expect(styles.length).toBeGreaterThan(8);
-    expect(globals).toContain('@import "./styles/foundation.css"');
+    for (const style of styles) expect(globals).toContain(`@import "./styles/${style}"`);
   });
 });

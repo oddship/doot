@@ -27,7 +27,7 @@ The HTTP catch-all is a thin adapter over typed domain handlers in `lib/api/`. A
 - Settings discovers provider authentication capabilities from Pi. The app only transports Pi's generic login prompts and events; Pi owns provider-specific URLs, token exchange, refresh, and logout, while an app-owned SQLite `CredentialStore` provides persistence.
 - The custom server checks persisted schedules every 30 seconds. Sync schedules start read-only jobs; active Flow schedules evaluate the current cache and create a bounded proposal for browser review.
 - Active sessions live in a bounded in-memory map; persisted sessions remain replayable after restart but are intentionally not resumable.
-- WebSocket events refresh background state. The agent response itself uses the AI SDK UI message SSE protocol.
+- WebSocket events refresh background state. The agent response itself uses an AI SDK-compatible UI message SSE protocol implemented by `lib/ui-message-stream.ts` so detached runs can outlive a browser reader.
 
 Schedules are local process timers, not an external task service. A missed persisted schedule is picked up when Doot next starts. Daily and weekly recurrence advances from the previously scheduled instant to avoid runtime drift; the recorded IANA timezone is retained for display. No scheduled path invokes a model or applies an IMAP mutation.
 

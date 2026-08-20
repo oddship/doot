@@ -27,6 +27,30 @@ server.mjs           Next.js + WebSocket process entry point
 - Production screens stay data-driven and are shared with the static demo; `demo-site` may adapt transport and navigation but must not reimplement those screens.
 - `app/globals.css` is an import manifest. Foundation, screen, theme, responsive, and feature rules stay in ordered files under `app/styles/`; preserve import order when cascade precedence matters.
 
+## Repository inventory
+
+Every tracked file belongs to one of these discovery or ownership paths:
+
+- Next.js discovers pages, layouts, icons, and route handlers under `app/`; the `/rules` pages are intentionally retained as compatibility redirects to canonical `/flows` URLs.
+- TypeScript imports connect every module under `components/` and `lib/` to a runtime, demo, or test entry point. Shared Flow page loading lives under `app/flows/`, not the legacy redirect directory.
+- `app/globals.css` imports every tracked file in `app/styles/` in cascade order.
+- Vitest discovers every `tests/*.test.ts` file; `tests/source-contract.ts` is their shared source-inspection helper.
+- The export-only Next app imports every `demo-site/fixtures/*.json` fixture. The Pages workflow watches shared components, styles, libraries, lockfiles, and demo sources so the hosted demo cannot silently lag behind production UI.
+- Moat discovers the Markdown tree under `docs/`; `_layout.html`, `_static/`, and `config.toml` are its layout, asset, and configuration inputs.
+- Root manifests, lockfiles, container/Nix/Just configuration, GitHub metadata, and governance documents are entry points for their named tools rather than application imports.
+- `public/doot-mark.svg` and `public/doot-logo.svg` are duplicated under `docs/_static/` intentionally because Moat copies only its documentation source tree. `app/icon.svg` is the square-background Next.js application icon.
+
+The following local paths are generated or environment-owned and must stay untracked:
+
+| Path | Purpose |
+| --- | --- |
+| `node_modules/`, `.next/`, `demo-site/.next/` | Dependency and Next.js build caches |
+| `demo-site/out/`, `demo-site/public/`, `_site/` | Repeatable static demo and documentation output |
+| `artifacts/` | Local UI audit screenshots and reports |
+| `email-cache.sqlite3*` | Private local mailbox cache, settings, credentials, and history |
+| `.direnv/`, `*.tsbuildinfo` | Local Nix shell and TypeScript caches |
+| `.agents/`, `.codex/` | Optional coding-environment mounts; not repository content |
+
 ## Organization rule
 
 Prefer a focused domain module over adding another large branch to a UI component or `store.ts`. Keep API parsing thin, persistence explicit, and safety checks close to the operation they protect.

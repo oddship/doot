@@ -10,7 +10,7 @@ const address = z
   .refine((value) => !/[\r\n]/.test(value), "invalid address");
 const reference = z.object({ account: z.string().min(1).max(160), uid: z.string().regex(/^\d+$/) }).strict();
 
-export const localDraftSchema = z
+const localDraftSchema = z
   .object({
     account: z.string().min(1).max(160),
     to: z.array(address).max(50).default([]),

@@ -28,7 +28,7 @@ Doot is an agent-first email workspace that investigates a local IMAP cache, bui
 
 ## Quick start
 
-Requirements: Node.js 22 or 23 and npm. Agent features also need a model provider connected through OAuth or an API key.
+Requirements: Node.js 22 LTS and npm. Agent features also need a model provider connected through OAuth or an API key.
 
 ```bash
 cp .env.example .env

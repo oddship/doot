@@ -1,4 +1,4 @@
-export type ApiRouteContext = {
+type ApiRouteContext = {
   request: Request;
   path: string[];
   key: string;

@@ -3,10 +3,7 @@ export type SelectedMessageRef = { account: string; uid: string };
 const STORAGE_KEY = "email-agent:selected-messages:v1";
 export const SELECTION_EVENT = "email-agent-selection";
 
-export function selectionId(value: SelectedMessageRef) {
-  return `${value.account}:${value.uid}`;
-}
-export function selectionRef(id: string): SelectedMessageRef | null {
+function selectionRef(id: string): SelectedMessageRef | null {
   const split = id.lastIndexOf(":");
   const account = id.slice(0, split),
     uid = id.slice(split + 1);

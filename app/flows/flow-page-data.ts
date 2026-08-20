@@ -1,6 +1,6 @@
 import { store } from "@/lib/store";
 
-export async function loadRulesPageData() {
+export async function loadFlowsPageData() {
   const [{ rules }, { accounts }, { folders }] = await Promise.all([
     store<any>(["rule-list"]),
     store<any>(["accounts"]),

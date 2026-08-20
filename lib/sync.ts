@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { emitBackground, store } from "@/lib/store";
 
-export type SyncJob = {
+type SyncJob = {
   id: string | null;
   status: "idle" | "running" | "done";
   started_at: string | null;

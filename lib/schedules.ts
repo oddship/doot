@@ -4,7 +4,6 @@ import { getRule } from "@/lib/rules";
 import { emitBackground, store } from "@/lib/store";
 import { getSyncJob, startSync } from "@/lib/sync";
 
-export type ScheduleKind = "flow" | "sync";
 export type ScheduleFrequency = "once" | "daily" | "weekly";
 
 function scheduleRow(row: any) {

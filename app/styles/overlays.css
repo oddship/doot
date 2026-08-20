@@ -1,5 +1,4 @@
-.dialog-backdrop,
-.sheet-backdrop {
+.dialog-backdrop {
   position: fixed;
   inset: 0;
   background: #0006;
@@ -24,17 +23,6 @@
 .dialog-head h2 {
   margin: 0;
   font-size: 18px;
-}
-.sheet-backdrop {
-  display: flex;
-  justify-content: flex-end;
-}
-.sheet {
-  height: 100%;
-  width: min(620px, 100vw);
-  background: #fff;
-  padding: 24px;
-  overflow: auto;
 }
 .tabs {
   display: flex;

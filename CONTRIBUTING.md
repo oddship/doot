@@ -4,7 +4,7 @@ Thanks for helping improve Doot. Keep changes small, safety-preserving, and easy
 
 ## Setup
 
-Use Node.js 22/23 with `npm ci`, or run `direnv allow` to enter the Nix shell. Copy `.env.example` to `.env`, then use `just dev`.
+Use Node.js 22 LTS with `npm ci`, or run `direnv allow` to enter the Nix shell. Copy `.env.example` to `.env`, then use `just dev`.
 
 Before opening a pull request:
 

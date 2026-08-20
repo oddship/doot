@@ -302,7 +302,7 @@ function Node({ node }: { node: WorkspaceNode }) {
   );
 }
 
-export function GeneratedWorkspaceView({ workspace }: { workspace: GeneratedWorkspace }) {
+function GeneratedWorkspaceView({ workspace }: { workspace: GeneratedWorkspace }) {
   return (
     <div>
       <header className="generated-header">

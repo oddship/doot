@@ -328,11 +328,6 @@ select:focus {
   display: block;
   margin-bottom: 6px;
 }
-.separator {
-  height: 1px;
-  background: var(--line);
-  margin: 18px 0;
-}
 .skeleton {
   background: linear-gradient(90deg, var(--soft), #fafafa, var(--soft));
   background-size: 200%;

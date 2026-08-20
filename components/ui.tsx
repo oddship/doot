@@ -76,9 +76,6 @@ export function Label(props: React.LabelHTMLAttributes<HTMLLabelElement>) {
 export function Skeleton({ className }: { className?: string }) {
   return <div className={cn("skeleton", className)} />;
 }
-export function Separator() {
-  return <div className="separator" />;
-}
 export function Dialog({
   open,
   title,
@@ -114,32 +111,6 @@ export function Dialog({
         </div>
         {children}
       </div>
-    </div>
-  );
-}
-export function Sheet({
-  open,
-  title,
-  children,
-  onClose,
-}: {
-  open: boolean;
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  if (!open) return null;
-  return (
-    <div className="sheet-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <aside className="sheet" role="dialog" aria-modal="true" aria-label={title}>
-        <div className="dialog-head">
-          <h2>{title}</h2>
-          <Button variant="ghost" tooltip="Close this side panel" tooltipSide="top" onClick={onClose}>
-            Close
-          </Button>
-        </div>
-        {children}
-      </aside>
     </div>
   );
 }

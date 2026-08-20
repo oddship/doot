@@ -90,11 +90,3 @@ export const sqliteAgentCredentialStore = {
     });
   },
 };
-
-export function listStoredAgentCredentials() {
-  return {
-    credentials: (
-      db.prepare("SELECT provider,auth_type type,updated_at FROM agent_credentials ORDER BY provider").all() as any[]
-    ).map((item) => ({ ...item, type: item.type || "api_key" })),
-  };
-}
