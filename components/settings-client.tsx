@@ -235,6 +235,24 @@ export function SettingsClient({ initial }: { initial: any }) {
             <h2>Sync behavior</h2>
             <div className="form-grid">
               <div>
+                <Label>Mailbox scope</Label>
+                <select
+                  value={settings.sync_scope || "inbox"}
+                  onChange={(event) => setSettings({ ...settings, sync_scope: event.target.value })}
+                >
+                  <option value="inbox">Inbox only</option>
+                  <option value="recommended">Recommended mailbox</option>
+                  <option value="custom">Choose folders</option>
+                </select>
+                <div className="muted">
+                  {settings.sync_scope === "recommended"
+                    ? "Gmail uses All Mail once; standard IMAP uses Inbox, Archive, and Sent when advertised."
+                    : settings.sync_scope === "custom"
+                      ? "Sync only the folders selected below."
+                      : "Sync only each account’s Inbox."}
+                </div>
+              </div>
+              <div>
                 <Label>Lookback days</Label>
                 <Input
                   type="number"
@@ -248,24 +266,74 @@ export function SettingsClient({ initial }: { initial: any }) {
                 />
               </div>
               <div>
-                <Label>Cached Inbox target</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={10000}
+                <Label>Messages per folder</Label>
+                <select
                   value={settings.initial_sync_limit}
                   onChange={(event) =>
                     setSettings({
                       ...settings,
-                      initial_sync_limit: Number(event.target.value),
+                      initial_sync_limit: event.target.value === "all" ? "all" : Number(event.target.value),
                     })
                   }
-                />
+                >
+                  {[75, 250, 500, 1000, 2500, 5000, 10000].map((value) => (
+                    <option key={value} value={value}>
+                      {value.toLocaleString()}
+                    </option>
+                  ))}
+                  <option value="all">All within lookback</option>
+                </select>
                 <div className="muted">
-                  Sync fills missing recent messages up to this target while retaining already cached bodies.
+                  Each selected folder fills recent messages to this target. “All” includes every message within the
+                  lookback window; cached bodies are retained.
                 </div>
               </div>
             </div>
+            {settings.sync_scope === "custom" && (
+              <div className="sync-folder-picker">
+                {accounts.map((account: any) => {
+                  const folders = (initial.folders || []).filter(
+                    (folder: any) =>
+                      folder.account === account.name &&
+                      !folder.flags?.some((flag: string) => flag.toLowerCase() === "\\noselect"),
+                  );
+                  const selectedFolders: string[] = settings.sync_folders?.[account.name] || [];
+                  return (
+                    <fieldset key={account.name}>
+                      <legend>{account.email}</legend>
+                      {folders.length ? (
+                        <div className="sync-folder-options">
+                          {folders.map((folder: any) => (
+                            <label key={folder.path}>
+                              <input
+                                type="checkbox"
+                                checked={selectedFolders.includes(folder.path)}
+                                onChange={(event) => {
+                                  const next = event.target.checked
+                                    ? [...new Set([...selectedFolders, folder.path])]
+                                    : selectedFolders.filter((path) => path !== folder.path);
+                                  setSettings({
+                                    ...settings,
+                                    sync_folders: { ...(settings.sync_folders || {}), [account.name]: next },
+                                  });
+                                }}
+                              />
+                              <span>{folder.path}</span>
+                              {folder.special_use && <Badge>{folder.special_use.replace(/^\\/, "")}</Badge>}
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="muted">
+                          Discover this account’s folders above before choosing a custom scope.
+                        </div>
+                      )}
+                    </fieldset>
+                  );
+                })}
+                <div className="muted">If no valid custom folder is selected, Doot safely falls back to Inbox.</div>
+              </div>
+            )}
             <div className="switch-row">
               <div>
                 <strong>Sync on application start</strong>

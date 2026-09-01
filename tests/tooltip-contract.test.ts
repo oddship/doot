@@ -11,6 +11,7 @@ describe("explanatory tooltips", () => {
     expect(ui).toContain('role="tooltip"');
     expect(css).toContain(".button[data-tooltip]:focus-visible::after");
     expect(css).toContain(".tooltip-root:focus-within");
+    expect(ui).toContain('aria-label={ariaLabel || (size === "icon" ? tooltip : undefined)}');
   });
 
   it("explains ambiguous actions across primary workflows", async () => {

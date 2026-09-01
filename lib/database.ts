@@ -27,12 +27,17 @@ function openDatabase() {
       date_ts INTEGER NOT NULL DEFAULT 0, body_text TEXT NOT NULL DEFAULT '',
       body_html TEXT NOT NULL DEFAULT '', attachments_json TEXT NOT NULL DEFAULT '[]',
       body_fetched INTEGER NOT NULL DEFAULT 0, flags_json TEXT NOT NULL DEFAULT '[]',
+      labels_json TEXT NOT NULL DEFAULT '[]',
+      provider_id TEXT NOT NULL DEFAULT '',
       unread INTEGER NOT NULL DEFAULT 0, present INTEGER NOT NULL DEFAULT 1,
       fetched_at TEXT NOT NULL,
-      PRIMARY KEY(account,uid));
+      PRIMARY KEY(account,folder,uid));
     CREATE TABLE IF NOT EXISTS sync_state (
-      account TEXT PRIMARY KEY, last_uid INTEGER NOT NULL DEFAULT 0,
-      last_sync TEXT, last_error TEXT);
+      account TEXT NOT NULL, folder TEXT NOT NULL DEFAULT 'INBOX', last_uid INTEGER NOT NULL DEFAULT 0,
+      last_sync TEXT, last_error TEXT, uid_validity TEXT,
+      uid_next INTEGER, highest_modseq TEXT, mailbox_messages INTEGER,
+      mailbox_unseen INTEGER, sync_days INTEGER, sync_limit INTEGER,
+      PRIMARY KEY(account,folder));
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS email_accounts (
       name TEXT PRIMARY KEY, host TEXT NOT NULL, username TEXT NOT NULL UNIQUE,
@@ -95,19 +100,6 @@ function openDatabase() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY(rule_id) REFERENCES email_rules(id) ON DELETE CASCADE);
-    CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
-      account UNINDEXED, uid UNINDEXED, sender, subject,
-      tokenize='unicode61 remove_diacritics 2');
-    CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
-      INSERT INTO message_fts(account,uid,sender,subject) VALUES(new.account,new.uid,new.sender,new.subject);
-    END;
-    CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
-      DELETE FROM message_fts WHERE account=old.account AND uid=old.uid;
-    END;
-    CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE OF account,uid,sender,subject ON messages BEGIN
-      DELETE FROM message_fts WHERE account=old.account AND uid=old.uid;
-      INSERT INTO message_fts(account,uid,sender,subject) VALUES(new.account,new.uid,new.sender,new.subject);
-    END;
     CREATE INDEX IF NOT EXISTS messages_date ON messages(date_ts DESC);
     CREATE INDEX IF NOT EXISTS messages_account_date ON messages(account,date_ts DESC);
     CREATE INDEX IF NOT EXISTS messages_account_present_date ON messages(account,present,date_ts DESC);
@@ -118,31 +110,101 @@ function openDatabase() {
     CREATE INDEX IF NOT EXISTS email_rules_status_updated ON email_rules(status,enabled,updated_at DESC);
     CREATE INDEX IF NOT EXISTS schedules_due ON schedules(enabled,next_run_at);
   `);
+  connection.exec("DROP VIEW IF EXISTS canonical_messages");
 
-  const messageColumns = new Set(
-    (connection.prepare("PRAGMA table_info(messages)").all() as any[]).map((row) => row.name),
-  );
+  let messageInfo = connection.prepare("PRAGMA table_info(messages)").all() as any[];
+  const messageColumns = new Set(messageInfo.map((row) => row.name));
   if (!messageColumns.has("date_ts"))
     connection.exec("ALTER TABLE messages ADD COLUMN date_ts INTEGER NOT NULL DEFAULT 0");
   if (!messageColumns.has("flags_json"))
     connection.exec("ALTER TABLE messages ADD COLUMN flags_json TEXT NOT NULL DEFAULT '[]'");
+  if (!messageColumns.has("labels_json"))
+    connection.exec("ALTER TABLE messages ADD COLUMN labels_json TEXT NOT NULL DEFAULT '[]'");
+  if (!messageColumns.has("provider_id"))
+    connection.exec("ALTER TABLE messages ADD COLUMN provider_id TEXT NOT NULL DEFAULT ''");
   if (!messageColumns.has("unread"))
     connection.exec("ALTER TABLE messages ADD COLUMN unread INTEGER NOT NULL DEFAULT 0");
   if (!messageColumns.has("present"))
     connection.exec("ALTER TABLE messages ADD COLUMN present INTEGER NOT NULL DEFAULT 1");
+  messageInfo = connection.prepare("PRAGMA table_info(messages)").all() as any[];
+  const messagePrimaryKey = messageInfo
+    .filter((row) => row.pk)
+    .sort((left, right) => left.pk - right.pk)
+    .map((row) => row.name)
+    .join(",");
+  if (messagePrimaryKey !== "account,folder,uid") {
+    connection.transaction(() => {
+      connection.exec(`
+        DROP TRIGGER IF EXISTS messages_fts_insert;
+        DROP TRIGGER IF EXISTS messages_fts_delete;
+        DROP TRIGGER IF EXISTS messages_fts_update;
+        DROP TABLE IF EXISTS message_fts;
+        ALTER TABLE messages RENAME TO messages_legacy;
+        CREATE TABLE messages (
+          account TEXT NOT NULL, account_email TEXT NOT NULL, uid TEXT NOT NULL,
+          folder TEXT NOT NULL DEFAULT 'INBOX', sender TEXT NOT NULL DEFAULT '',
+          subject TEXT NOT NULL DEFAULT '', date TEXT NOT NULL DEFAULT '',
+          date_ts INTEGER NOT NULL DEFAULT 0, body_text TEXT NOT NULL DEFAULT '',
+          body_html TEXT NOT NULL DEFAULT '', attachments_json TEXT NOT NULL DEFAULT '[]',
+          body_fetched INTEGER NOT NULL DEFAULT 0, flags_json TEXT NOT NULL DEFAULT '[]',
+          labels_json TEXT NOT NULL DEFAULT '[]', provider_id TEXT NOT NULL DEFAULT '',
+          unread INTEGER NOT NULL DEFAULT 0, present INTEGER NOT NULL DEFAULT 1,
+          fetched_at TEXT NOT NULL,
+          PRIMARY KEY(account,folder,uid));
+        INSERT INTO messages(
+          account,account_email,uid,folder,sender,subject,date,date_ts,body_text,body_html,
+          attachments_json,body_fetched,flags_json,labels_json,provider_id,unread,present,fetched_at)
+        SELECT account,account_email,uid,folder,sender,subject,date,date_ts,body_text,body_html,
+          attachments_json,body_fetched,flags_json,labels_json,provider_id,unread,present,fetched_at
+        FROM messages_legacy;
+        DROP TABLE messages_legacy;
+      `);
+    })();
+  }
   const viewColumns = new Set(
     (connection.prepare("PRAGMA table_info(agent_views)").all() as any[]).map((row) => row.name),
   );
   if (!viewColumns.has("schema_version"))
     connection.exec("ALTER TABLE agent_views ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 0");
   if (!viewColumns.has("session_id")) connection.exec("ALTER TABLE agent_views ADD COLUMN session_id TEXT");
-  const syncColumns = new Set(
-    (connection.prepare("PRAGMA table_info(sync_state)").all() as any[]).map((row) => row.name),
-  );
+  let syncInfo = connection.prepare("PRAGMA table_info(sync_state)").all() as any[];
+  const syncColumns = new Set(syncInfo.map((row) => row.name));
+  if (!syncColumns.has("folder"))
+    connection.exec("ALTER TABLE sync_state ADD COLUMN folder TEXT NOT NULL DEFAULT 'INBOX'");
   if (!syncColumns.has("uid_validity")) connection.exec("ALTER TABLE sync_state ADD COLUMN uid_validity TEXT");
   if (!syncColumns.has("mailbox_messages"))
     connection.exec("ALTER TABLE sync_state ADD COLUMN mailbox_messages INTEGER");
   if (!syncColumns.has("mailbox_unseen")) connection.exec("ALTER TABLE sync_state ADD COLUMN mailbox_unseen INTEGER");
+  if (!syncColumns.has("uid_next")) connection.exec("ALTER TABLE sync_state ADD COLUMN uid_next INTEGER");
+  if (!syncColumns.has("highest_modseq")) connection.exec("ALTER TABLE sync_state ADD COLUMN highest_modseq TEXT");
+  if (!syncColumns.has("sync_days")) connection.exec("ALTER TABLE sync_state ADD COLUMN sync_days INTEGER");
+  if (!syncColumns.has("sync_limit")) connection.exec("ALTER TABLE sync_state ADD COLUMN sync_limit INTEGER");
+  syncInfo = connection.prepare("PRAGMA table_info(sync_state)").all() as any[];
+  const syncPrimaryKey = syncInfo
+    .filter((row) => row.pk)
+    .sort((left, right) => left.pk - right.pk)
+    .map((row) => row.name)
+    .join(",");
+  if (syncPrimaryKey !== "account,folder") {
+    connection.transaction(() => {
+      connection.exec(`
+        ALTER TABLE sync_state RENAME TO sync_state_legacy;
+        CREATE TABLE sync_state (
+          account TEXT NOT NULL, folder TEXT NOT NULL DEFAULT 'INBOX', last_uid INTEGER NOT NULL DEFAULT 0,
+          last_sync TEXT, last_error TEXT, uid_validity TEXT,
+          uid_next INTEGER, highest_modseq TEXT, mailbox_messages INTEGER,
+          mailbox_unseen INTEGER, sync_days INTEGER, sync_limit INTEGER,
+          PRIMARY KEY(account,folder));
+        INSERT INTO sync_state(
+          account,folder,last_uid,last_sync,last_error,uid_validity,uid_next,highest_modseq,
+          mailbox_messages,mailbox_unseen,sync_days,sync_limit)
+        SELECT account,folder,last_uid,last_sync,last_error,uid_validity,uid_next,highest_modseq,
+          mailbox_messages,mailbox_unseen,sync_days,sync_limit
+        FROM sync_state_legacy;
+        DROP TABLE sync_state_legacy;
+      `);
+    })();
+  }
   const sessionColumns = new Set(
     (connection.prepare("PRAGMA table_info(agent_sessions)").all() as any[]).map((row) => row.name),
   );
@@ -155,11 +217,61 @@ function openDatabase() {
     connection.exec("ALTER TABLE agent_credentials ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'api_key'");
   if (!credentialColumns.has("credential_json"))
     connection.exec("ALTER TABLE agent_credentials ADD COLUMN credential_json TEXT NOT NULL DEFAULT ''");
+  const ftsColumns = new Set(
+    (connection.prepare("PRAGMA table_info(message_fts)").all() as any[]).map((row) => row.name),
+  );
+  if (!ftsColumns.has("folder"))
+    connection.exec(`
+      DROP TRIGGER IF EXISTS messages_fts_insert;
+      DROP TRIGGER IF EXISTS messages_fts_delete;
+      DROP TRIGGER IF EXISTS messages_fts_update;
+      DROP TABLE IF EXISTS message_fts;
+    `);
+  connection.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
+      account UNINDEXED, folder UNINDEXED, uid UNINDEXED, sender, subject,
+      tokenize='unicode61 remove_diacritics 2');
+    CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+      INSERT INTO message_fts(account,folder,uid,sender,subject)
+      VALUES(new.account,new.folder,new.uid,new.sender,new.subject);
+    END;
+    CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+      DELETE FROM message_fts WHERE account=old.account AND folder=old.folder AND uid=old.uid;
+    END;
+    CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE OF account,folder,uid,sender,subject ON messages BEGIN
+      DELETE FROM message_fts WHERE account=old.account AND folder=old.folder AND uid=old.uid;
+      INSERT INTO message_fts(account,folder,uid,sender,subject)
+      VALUES(new.account,new.folder,new.uid,new.sender,new.subject);
+    END;
+    CREATE INDEX IF NOT EXISTS messages_date ON messages(date_ts DESC);
+    CREATE INDEX IF NOT EXISTS messages_account_date ON messages(account,date_ts DESC);
+    CREATE INDEX IF NOT EXISTS messages_account_present_date ON messages(account,present,date_ts DESC);
+    CREATE INDEX IF NOT EXISTS messages_account_provider_present ON messages(account,provider_id,present);
+  `);
   connection
-    .prepare(`INSERT INTO message_fts(account,uid,sender,subject)
-    SELECT m.account,m.uid,m.sender,m.subject FROM messages m
-    WHERE NOT EXISTS(SELECT 1 FROM message_fts f WHERE f.account=m.account AND f.uid=m.uid)`)
+    .prepare(`INSERT INTO message_fts(account,folder,uid,sender,subject)
+    SELECT m.account,m.folder,m.uid,m.sender,m.subject FROM messages m
+    WHERE NOT EXISTS(SELECT 1 FROM message_fts f
+      WHERE f.account=m.account AND f.folder=m.folder AND f.uid=m.uid)`)
     .run();
+  connection.exec(`
+    CREATE VIEW canonical_messages AS
+    SELECT * FROM (
+      SELECT messages.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY account,
+            CASE WHEN provider_id<>'' THEN 'provider:'||provider_id ELSE 'uid:'||folder||char(0)||uid END
+          ORDER BY CASE
+            WHEN lower(folder)='inbox' THEN 0
+            WHEN lower(folder) LIKE '%all mail' THEN 1
+            ELSE 2
+          END, folder COLLATE NOCASE, CAST(uid AS INTEGER) DESC
+        ) canonical_rank
+      FROM messages
+      WHERE present=1
+    )
+    WHERE canonical_rank=1;
+  `);
   return connection;
 }
 
@@ -170,6 +282,8 @@ export const DEFAULT_SETTINGS = {
   sync_days: 30,
   initial_sync_limit: 75,
   sync_on_start: false,
+  sync_scope: "inbox",
+  sync_folders: {},
   auto_organize: false,
   agent_delegation: false,
   allow_remote_images: false,
@@ -259,7 +373,7 @@ export function messageWhere(input: {
     const query = safeFtsQuery(parsed.text);
     if (query) {
       clauses.push(
-        "EXISTS(SELECT 1 FROM message_fts WHERE message_fts.account=messages.account AND message_fts.uid=messages.uid AND message_fts MATCH ?)",
+        "EXISTS(SELECT 1 FROM message_fts WHERE message_fts.account=messages.account AND message_fts.folder=messages.folder AND message_fts.uid=messages.uid AND message_fts MATCH ?)",
       );
       values.push(query);
     } else if (!parsed.senders.length && !parsed.subjects.length && !parsed.domains.length) clauses.push("0");
@@ -289,6 +403,7 @@ export function queryMessages(input: {
   offset?: number;
   limit?: number;
   focusUid?: string;
+  focusFolder?: string;
   includeBodyFetched?: boolean;
 }) {
   const { where, values } = messageWhere(input);
@@ -297,15 +412,20 @@ export function queryMessages(input: {
   let focusFound = false;
   if (input.focusUid && /^\d+$/.test(input.focusUid)) {
     const focused = db
-      .prepare(`SELECT date_ts,CAST(uid AS INTEGER) uid_number FROM messages${where} AND messages.uid=? LIMIT 1`)
-      .get(...values, input.focusUid) as { date_ts: number; uid_number: number } | undefined;
+      .prepare(
+        `SELECT date_ts,CAST(uid AS INTEGER) uid_number FROM canonical_messages messages${where} AND messages.uid=?
+        ${input.focusFolder ? "AND messages.folder=?" : ""} LIMIT 1`,
+      )
+      .get(...values, input.focusUid, ...(input.focusFolder ? [input.focusFolder] : [])) as
+      | { date_ts: number; uid_number: number }
+      | undefined;
     if (focused) {
       focusFound = true;
       const rank = Number(
         (
           db
             .prepare(
-              `SELECT COUNT(*) count FROM messages${where} AND
+              `SELECT COUNT(*) count FROM canonical_messages messages${where} AND
               (messages.date_ts>? OR (messages.date_ts=? AND CAST(messages.uid AS INTEGER)>?))`,
             )
             .get(...values, focused.date_ts, focused.date_ts, focused.uid_number) as { count: number }
@@ -314,11 +434,15 @@ export function queryMessages(input: {
       offset = Math.floor(rank / limit) * limit;
     }
   }
-  const fields = `account,account_email,uid,sender,subject,date,date_ts,unread${input.includeBodyFetched ? ",body_fetched" : ""}`;
+  const fields = `account,account_email,uid,folder,provider_id,sender,subject,date,date_ts,unread${input.includeBodyFetched ? ",body_fetched" : ""}`;
   const messages = db
-    .prepare(`SELECT ${fields} FROM messages${where} ORDER BY date_ts DESC,CAST(uid AS INTEGER) DESC LIMIT ? OFFSET ?`)
+    .prepare(
+      `SELECT ${fields} FROM canonical_messages messages${where} ORDER BY date_ts DESC,CAST(uid AS INTEGER) DESC LIMIT ? OFFSET ?`,
+    )
     .all(...values, limit, offset);
-  const total = Number((db.prepare(`SELECT COUNT(*) count FROM messages${where}`).get(...values) as any).count);
+  const total = Number(
+    (db.prepare(`SELECT COUNT(*) count FROM canonical_messages messages${where}`).get(...values) as any).count,
+  );
   return {
     messages,
     total,

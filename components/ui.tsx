@@ -20,6 +20,7 @@ export const Button = React.forwardRef<
     tooltip,
     tooltipSide = "bottom",
     tooltipAlign = "center",
+    "aria-label": ariaLabel,
     ...props
   },
   ref,
@@ -32,6 +33,7 @@ export const Button = React.forwardRef<
       data-tooltip-side={tooltip ? tooltipSide : undefined}
       data-tooltip-align={tooltip ? tooltipAlign : undefined}
       aria-description={tooltip}
+      aria-label={ariaLabel || (size === "icon" ? tooltip : undefined)}
       {...props}
     />
   );

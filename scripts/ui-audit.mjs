@@ -8,7 +8,7 @@ const executablePath = process.env.CHROMIUM_PATH;
 await mkdir(outputDir, { recursive: true });
 
 const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
-const context = await browser.newContext({
+let context = await browser.newContext({
   viewport: { width: 1920, height: 1080 },
   deviceScaleFactor: 1,
   locale: "en-IN",
@@ -21,8 +21,12 @@ async function capture(name, route, prepare) {
   const page = await context.newPage();
   const consoleErrors = [];
   page.on("console", (message) => message.type() === "error" && consoleErrors.push(message.text()));
+  const navigationStarted = performance.now();
   await page.goto(new URL(route, baseURL).toString(), { waitUntil: "networkidle" });
+  const navigationMs = Math.round(performance.now() - navigationStarted);
+  const prepareStarted = performance.now();
   if (prepare) await prepare(page);
+  const prepareMs = prepare ? Math.round(performance.now() - prepareStarted) : null;
   await page.waitForTimeout(400);
   const metrics = await page.evaluate(() => ({
     viewport: { width: innerWidth, height: innerHeight },
@@ -31,7 +35,7 @@ async function capture(name, route, prepare) {
     activeNavigation: document.querySelector(".nav a.active")?.textContent?.trim() || null,
   }));
   await page.screenshot({ path: path.join(outputDir, `${name}.png`) });
-  report.push({ name, route: page.url(), ...metrics, consoleErrors });
+  report.push({ name, route: page.url(), navigationMs, prepareMs, ...metrics, consoleErrors });
   await page.close();
 }
 
@@ -39,7 +43,10 @@ await capture("workspace", "/");
 await capture("inbox", "/inbox");
 await capture("inbox-message", "/inbox", async (page) => {
   const message = page.locator(".mail-item").first();
-  if (await message.count()) await message.click();
+  if (await message.count()) {
+    await message.click();
+    await page.locator(".email-body-surface").waitFor();
+  }
 });
 await capture("drafts", "/drafts");
 
@@ -50,6 +57,8 @@ const flowRoute = (await flowLink.count()) ? await flowLink.getAttribute("href")
 await discovery.goto(new URL("/history", baseURL).toString(), { waitUntil: "networkidle" });
 const historyLink = discovery.locator('a[href^="/history/"]').first();
 const historyRoute = (await historyLink.count()) ? await historyLink.getAttribute("href") : null;
+const agentHistoryLink = discovery.locator('a[href^="/history/"]', { hasText: "Agent" }).first();
+const agentHistoryRoute = (await agentHistoryLink.count()) ? await agentHistoryLink.getAttribute("href") : null;
 await discovery.close();
 
 await capture("flows", flowRoute || "/flows", async (page) => {
@@ -60,14 +69,57 @@ await capture("flow-schedule", flowRoute || "/flows", async (page) => {
   const schedule = page.locator(".schedule-card");
   if (await schedule.count()) await schedule.scrollIntoViewIfNeeded();
 });
+await capture("flow-approval", flowRoute || "/flows", async (page) => {
+  const review = page.getByRole("button", { name: "Review & run" });
+  if (!(await review.count())) return;
+  await review.click();
+  const approval = page.getByRole("button", { name: "Approve and run" });
+  if (await approval.count()) await approval.hover();
+});
 await capture("history", "/history");
-if (historyRoute) await capture("history-replay", historyRoute);
+if (agentHistoryRoute || historyRoute) await capture("history-replay", agentHistoryRoute || historyRoute);
 await capture("settings", "/settings");
 await capture("settings-controls", "/settings", async (page) => page.locator("#provider").scrollIntoViewIfNeeded());
 await capture("sync-schedule", "/settings", async (page) => {
   const schedule = page.locator(".schedule-card");
   if (await schedule.count()) await schedule.scrollIntoViewIfNeeded();
 });
+
+await context.close();
+context = await browser.newContext({
+  viewport: { width: 1115, height: 1246 },
+  deviceScaleFactor: 1,
+  locale: "en-IN",
+  timezoneId: "Asia/Kolkata",
+  colorScheme: "light",
+});
+await capture("workspace-compact", "/");
+await capture("workspace-searches-compact", "/", async (page) => {
+  await page.locator(".search-match-count").first().scrollIntoViewIfNeeded();
+});
+
+await context.close();
+context = await browser.newContext({
+  viewport: { width: 1242, height: 1246 },
+  deviceScaleFactor: 1,
+  locale: "en-IN",
+  timezoneId: "Asia/Kolkata",
+  colorScheme: "light",
+});
+await capture("inbox-compact", "/inbox");
+
+await context.close();
+context = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  deviceScaleFactor: 1,
+  locale: "en-IN",
+  timezoneId: "Asia/Kolkata",
+  colorScheme: "light",
+});
+await capture("workspace-mobile", "/");
+await capture("inbox-mobile", "/inbox");
+await capture("flows-mobile", flowRoute || "/flows");
+await capture("history-mobile", "/history");
 
 await browser.close();
 await writeFile(path.join(outputDir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);

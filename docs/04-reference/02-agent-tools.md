@@ -7,7 +7,7 @@ The agent operates on bounded structured results rather than a preloaded mailbox
 - `email_search` — targeted FTS5/field search with explicit limit, offset, totals, and next offset.
 - `email_request_body_access` — displays an explicit browser approval card for exact message references; it does not read bodies.
 - `email_read_selected` — reads only UI-selected messages through the safe reader.
-- `email_propose_organization` — persists an approval-only archive or move proposal.
+- `email_propose_organization` — persists an approval-only archive, move, or delete proposal. Every item must use the exact source folder returned by search; folder-scoped IMAP UIDs are never inferred.
 - `email_prepare_draft` — creates or revises a structured local draft; it cannot send mail or write to IMAP.
 - `render_workspace` — persists a versioned validated component tree.
 - `update_workspace` — applies a minimal validated patch; new top-level batches are prepended like a stack while explicit positions remain available for deliberate reordering.

@@ -1,6 +1,6 @@
 "use client";
 import { Archive, ExternalLink, FolderInput, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { Badge, Button, Card, cn } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
@@ -14,7 +14,9 @@ import {
 
 function runIntent(intent: WorkspaceActionIntent) {
   if (intent.type === "open_message") {
-    navigateClient(`/inbox?account=${encodeURIComponent(intent.account)}&open=${encodeURIComponent(intent.uid)}`);
+    const query = new URLSearchParams({ account: intent.account, open: intent.uid });
+    if (intent.folder) query.set("folder", intent.folder);
+    navigateClient(`/inbox?${query}`);
     return;
   }
   if (intent.type === "filter_inbox") {
@@ -117,13 +119,39 @@ function ActionButton({ action }: { action: { label: string; intent: WorkspaceAc
   );
 }
 
+function isFlowSuggestion(node: WorkspaceNode) {
+  return node.type === "rule_suggestion" || node.type === "flow_suggestion";
+}
+
+function NodeChildren({ children }: { children: WorkspaceNode[] }) {
+  const rendered: ReactNode[] = [];
+  for (let index = 0; index < children.length; ) {
+    if (!isFlowSuggestion(children[index])) {
+      rendered.push(<Node node={children[index]} key={`node-${index}`} />);
+      index += 1;
+      continue;
+    }
+    const start = index;
+    while (index < children.length && isFlowSuggestion(children[index])) index += 1;
+    const suggestions = children.slice(start, index);
+    if (suggestions.length === 1) rendered.push(<Node node={suggestions[0]} key={`node-${start}`} />);
+    else
+      rendered.push(
+        <div className="workspace-flow-grid" key={`flow-grid-${start}`}>
+          {suggestions.map((suggestion, suggestionIndex) => (
+            <Node node={suggestion} key={suggestionIndex} />
+          ))}
+        </div>,
+      );
+  }
+  return rendered;
+}
+
 function Node({ node }: { node: WorkspaceNode }) {
   if (node.type === "stack")
     return (
       <div className={cn("workspace-stack", `gap-${node.gap || "md"}`)}>
-        {node.children.map((child, index) => (
-          <Node node={child} key={index} />
-        ))}
+        <NodeChildren>{node.children}</NodeChildren>
       </div>
     );
   if (node.type === "grid")
@@ -160,8 +188,15 @@ function Node({ node }: { node: WorkspaceNode }) {
           {node.messages.map((message) => (
             <div
               className="message-row"
-              key={`${message.account}:${message.uid}`}
-              onClick={() => runIntent({ type: "open_message", account: message.account, uid: message.uid })}
+              key={`${message.account}:${message.folder || "INBOX"}:${message.uid}`}
+              onClick={() =>
+                runIntent({
+                  type: "open_message",
+                  account: message.account,
+                  uid: message.uid,
+                  folder: message.folder,
+                })
+              }
             >
               <strong>{message.subject || "(no subject)"}</strong>
               <span>
@@ -248,7 +283,7 @@ function Node({ node }: { node: WorkspaceNode }) {
     );
   if (node.type === "rule_suggestion" || node.type === "flow_suggestion")
     return (
-      <Card className="node-card">
+      <Card className="node-card flow-suggestion-card">
         <Badge tone="good">Suggested flow</Badge>
         <h3 style={{ marginTop: 10 }}>{node.title}</h3>
         <p className="muted">{node.description}</p>
@@ -261,7 +296,9 @@ function Node({ node }: { node: WorkspaceNode }) {
         <div>
           <div className="node-title-row">
             <h3>{node.label}</h3>
-            {node.count !== undefined && <Badge>{node.count} matches</Badge>}
+            {node.count !== undefined && (
+              <Badge className="search-match-count">{node.count.toLocaleString("en-IN")} matches</Badge>
+            )}
           </div>
           {node.description && <p className="muted">{node.description}</p>}
           {node.tags?.length ? (
@@ -304,7 +341,7 @@ function Node({ node }: { node: WorkspaceNode }) {
 
 function GeneratedWorkspaceView({ workspace }: { workspace: GeneratedWorkspace }) {
   return (
-    <div>
+    <div className="generated-workspace">
       <header className="generated-header">
         <Badge tone="good">Prepared by Doot</Badge>
         <h1>{workspace.title}</h1>

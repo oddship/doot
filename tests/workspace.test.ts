@@ -65,13 +65,32 @@ describe("generated workspace schema", () => {
                 type: "create_proposal",
                 action: "delete",
                 reason: "Repeated unwanted alerts",
-                items: [{ account: "a", uid: "1" }],
+                items: [{ account: "a", uid: "1", source_folder: "INBOX" }],
               },
             },
           ],
         }),
       ).success,
     ).toBe(true));
+  it("rejects mailbox proposals without an exact source folder", () =>
+    expect(
+      generatedWorkspaceSchema.safeParse(
+        base({
+          type: "action_group",
+          actions: [
+            {
+              label: "Ambiguous archive",
+              intent: {
+                type: "create_proposal",
+                action: "archive",
+                reason: "Missing folder reference",
+                items: [{ account: "a", uid: "1" }],
+              },
+            },
+          ],
+        }),
+      ).success,
+    ).toBe(false));
   it("rejects mismatched table rows", () =>
     expect(
       generatedWorkspaceSchema.safeParse(base({ type: "table", columns: ["A", "B"], rows: [["one"]] })).success,

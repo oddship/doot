@@ -20,4 +20,11 @@ describe("mailbox sync planning", () => {
     const eligible = Array.from({ length: 10_050 }, (_, index) => index + 1);
     expect(planMailboxSync(eligible, [], 50_000).desired).toHaveLength(10_000);
   });
+
+  it("selects every eligible message when the target is unlimited", () => {
+    expect(planMailboxSync([4, 1, 3, 2], [4], 0)).toMatchObject({
+      desired: [1, 2, 3, 4],
+      missing: [1, 2, 3],
+    });
+  });
 });

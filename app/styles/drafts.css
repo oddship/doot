@@ -4,6 +4,19 @@
   gap: 20px;
   align-items: start;
 }
+.drafts-layout-empty {
+  display: block;
+}
+.drafts-layout-empty .draft-list {
+  position: static;
+  max-height: none;
+}
+.drafts-layout-empty .draft-editor {
+  display: none;
+}
+.drafts-layout-empty .draft-empty {
+  min-height: 260px;
+}
 .draft-list {
   padding: 8px;
   max-height: calc(100vh - 175px);

@@ -14,12 +14,14 @@ export const handleAccountRoutes: ApiRouteHandler = async ({ request, path, key,
       content: "Added an IMAP account. Credentials are not included in History.",
       metadata: { account: result.account?.name, provider: result.account?.provider },
     });
+    if (result.account?.name) void store(["account-warm", result.account.name]).catch(() => undefined);
     return Response.json(result, { status: 201 });
   }
   if (path[0] !== "accounts" || path.length < 2) return null;
 
   const name = decodeURIComponent(path[1]);
   if (path[2] === "test" && method === "POST") return Response.json(await store(["account-test", name]));
+  if (path[2] === "warm" && method === "POST") return Response.json(await store(["account-warm", name]));
   if (path[2] === "folders" && method === "GET") return Response.json(await store(["account-folders", name]));
   if (path[2] === "folders" && ["POST", "PUT", "DELETE"].includes(method)) {
     const value = await confirmedBody(request, "Explicit confirmation is required for every IMAP folder write");
@@ -49,6 +51,7 @@ export const handleAccountRoutes: ApiRouteHandler = async ({ request, path, key,
       content: "Updated IMAP account configuration. Credentials are not included in History.",
       metadata: { account: name, provider: result.account?.provider },
     });
+    void store(["account-warm", name]).catch(() => undefined);
     return Response.json(result);
   }
   if (method === "DELETE") {

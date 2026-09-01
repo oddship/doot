@@ -36,6 +36,8 @@ describe("unified activity history", () => {
     const server = await readFile("server.mjs", "utf8");
     const route = await readApiRoutes();
     expect(server).toContain("setInterval(schedulerTick, 30_000)");
+    expect(server).toContain("warmMessageReaders");
+    expect(server).toContain("/warm");
     expect(route).toContain('key === "schedules" && method === "POST"');
     expect(route).toContain('key === "scheduler/tick"');
     expect(schedules).toContain('["rule-propose", String(rule.id)]');

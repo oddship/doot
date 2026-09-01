@@ -8,7 +8,13 @@ const address = z
   .min(1)
   .max(320)
   .refine((value) => !/[\r\n]/.test(value), "invalid address");
-const reference = z.object({ account: z.string().min(1).max(160), uid: z.string().regex(/^\d+$/) }).strict();
+const reference = z
+  .object({
+    account: z.string().min(1).max(160),
+    uid: z.string().regex(/^\d+$/),
+    folder: z.string().min(1).max(500).optional(),
+  })
+  .strict();
 
 const localDraftSchema = z
   .object({

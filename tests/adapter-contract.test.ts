@@ -11,10 +11,23 @@ describe("IMAP adapter contract", () => {
     expect(source).toContain("getMailboxLock(folder, { readOnly");
     expect(source).toContain("if (!existing.body_fetched)");
   });
-  it("migrates workspaces without recreating the database", async () => {
+  it("reuses bounded read-only IMAP sessions and disposes them after idle time", async () => {
+    const source = compactSource(await readFile("lib/imap.ts", "utf8"));
+    expect(source).toContain("const READ_SESSION_IDLE_MS = 10 * 60_000");
+    expect(source).toContain("const MAX_READ_SESSIONS = 12");
+    expect(source).toContain("withReusableReadMailbox");
+    expect(source).toContain('description: "Doot reusable read"');
+    expect(source).toContain("session.queue.then");
+    expect(source).toContain("scheduleReadSessionIdleClose(session)");
+    expect(source).toContain("closeAccountReadSessions");
+  });
+  it("migrates workspaces and folder-scoped identities without losing cached rows", async () => {
     const source = await readFile("lib/database.ts", "utf8");
     expect(source).toContain("ALTER TABLE agent_views ADD COLUMN schema_version");
-    expect(source).not.toContain("DROP TABLE");
+    expect(source).toContain("ALTER TABLE messages RENAME TO messages_legacy");
+    expect(source).toContain("INSERT INTO messages(");
+    expect(source).toContain("PRIMARY KEY(account,folder,uid)");
+    expect(source).toContain("PRIMARY KEY(account,folder)");
   });
   it("provides synchronized FTS5 search and namespaced JSON memory", async () => {
     const database = await readFile("lib/database.ts", "utf8");
@@ -32,8 +45,8 @@ describe("IMAP adapter contract", () => {
   it("hides applied and absent messages from cache-backed reads", async () => {
     const imap = await readFile("lib/imap.ts", "utf8");
     const store = await readFile("lib/store.ts", "utf8");
-    expect(imap).toContain("UPDATE messages SET present=0 WHERE account=? AND uid=?");
-    expect(imap).toContain("SELECT * FROM messages WHERE account=? AND uid=? AND present=1");
-    expect(store).toContain("FROM messages WHERE present=1");
+    expect(imap).toContain("UPDATE messages SET present=0 WHERE account=? AND folder=? AND uid=?");
+    expect(imap).toContain("SELECT * FROM messages WHERE account=? AND folder=? AND uid=? AND present=1");
+    expect(store).toContain("FROM canonical_messages");
   });
 });

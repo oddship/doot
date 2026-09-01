@@ -9,13 +9,16 @@ import {
   queryMessages,
   settingsValue,
 } from "@/lib/database";
+import { visibleUserPrompt } from "@/lib/history-display";
 import {
   applyMailboxAction,
+  closeAccountReadSessions,
   discoverAccountFolders,
   mutateAccountFolder,
   readMessage,
   syncAccount,
   testAccount,
+  warmMessageReader,
 } from "@/lib/imap";
 import { type FolderMutation, isProtectedMailbox } from "@/lib/imap-folder";
 import { providerForHost } from "@/lib/mail-provider";
@@ -53,18 +56,19 @@ function parseValue<T = any>(value: string | undefined, message = "invalid JSON"
 
 function dashboard() {
   const totals = db
-    .prepare(
-      "SELECT COUNT(*) cached,SUM(CASE WHEN body_fetched=1 THEN 1 ELSE 0 END) bodies FROM messages WHERE present=1",
-    )
+    .prepare("SELECT COUNT(*) cached,SUM(CASE WHEN body_fetched=1 THEN 1 ELSE 0 END) bodies FROM canonical_messages")
     .get();
   const accounts = db
     .prepare(`SELECT m.account,m.account_email,COUNT(*) cached,MAX(s.last_sync) last_sync,MAX(s.last_error) last_error
-    FROM messages m LEFT JOIN sync_state s ON s.account=m.account WHERE m.present=1
+    FROM canonical_messages m LEFT JOIN (
+      SELECT account,MAX(last_sync) last_sync,MAX(last_error) last_error FROM sync_state GROUP BY account
+    ) s ON s.account=m.account
     GROUP BY m.account,m.account_email ORDER BY m.account`)
     .all();
   const recent = db
     .prepare(
-      "SELECT account,account_email,uid,sender,subject,date FROM messages WHERE present=1 ORDER BY date_ts DESC,CAST(uid AS INTEGER) DESC LIMIT 12",
+      `SELECT account,account_email,uid,folder,sender,subject,date FROM canonical_messages
+      ORDER BY date_ts DESC,CAST(uid AS INTEGER) DESC LIMIT 12`,
     )
     .all();
   const actions = (
@@ -92,19 +96,21 @@ function dashboard() {
 function facets(input: { account?: string; query?: string; days?: number; limit?: number }) {
   const { where, values } = messageWhere(input);
   const limit = Math.max(5, Math.min(input.limit || 25, 50));
-  const total = Number((db.prepare(`SELECT COUNT(*) count FROM messages${where}`).get(...values) as any).count);
+  const total = Number(
+    (db.prepare(`SELECT COUNT(*) count FROM canonical_messages messages${where}`).get(...values) as any).count,
+  );
   const accounts = db
     .prepare(
-      `SELECT account,account_email,COUNT(*) count FROM messages${where} GROUP BY account,account_email ORDER BY count DESC`,
+      `SELECT account,account_email,COUNT(*) count FROM canonical_messages messages${where} GROUP BY account,account_email ORDER BY count DESC`,
     )
     .all(...values);
   const top_senders = db
     .prepare(
-      `SELECT sender name,COUNT(*) count FROM messages${where} GROUP BY sender ORDER BY count DESC,sender LIMIT ?`,
+      `SELECT sender name,COUNT(*) count FROM canonical_messages messages${where} GROUP BY sender ORDER BY count DESC,sender LIMIT ?`,
     )
     .all(...values, limit) as any[];
   const domainCounts = new Map<string, number>();
-  for (const row of db.prepare(`SELECT sender FROM messages${where}`).all(...values) as any[]) {
+  for (const row of db.prepare(`SELECT sender FROM canonical_messages messages${where}`).all(...values) as any[]) {
     const match = String(row.sender).match(/@([A-Za-z0-9.-]+)/);
     const domain = match?.[1]?.toLowerCase() || "unknown";
     domainCounts.set(domain, (domainCounts.get(domain) || 0) + 1);
@@ -126,7 +132,7 @@ function facets(input: { account?: string; query?: string; days?: number; limit?
       count: Number(
         (
           db
-            .prepare(`SELECT COUNT(*) count FROM messages${join} date_ts>=? AND date_ts<?`)
+            .prepare(`SELECT COUNT(*) count FROM canonical_messages messages${join} date_ts>=? AND date_ts<?`)
             .get(...values, lower, upper) as any
         ).count,
       ),
@@ -218,7 +224,12 @@ function sessionGet(id: string) {
         "SELECT id,event_type,role,content,metadata_json,created_at FROM agent_events WHERE session_id=? ORDER BY id",
       )
       .all(id) as any[]
-  ).map((row) => ({ ...row, metadata: json(row.metadata_json, {}), metadata_json: undefined }));
+  ).map((row) => ({
+    ...row,
+    content: row.event_type === "user_prompt" ? visibleUserPrompt(row.content) : row.content,
+    metadata: json(row.metadata_json, {}),
+    metadata_json: undefined,
+  }));
   const row = db
     .prepare(
       "SELECT id,kind,spec_json,created_at,schema_version,session_id FROM agent_views WHERE session_id=? ORDER BY id DESC LIMIT 1",
@@ -244,18 +255,24 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
     case "accounts":
       result = accountList();
       break;
-    case "account-upsert":
+    case "account-upsert": {
       result = accountUpsert(parseValue(rest[0]));
+      await closeAccountReadSessions(result.account.name);
       break;
+    }
     case "account-delete": {
       const name = required(rest[0], "account is required");
       if (!accountByName(name)) throw new Error("unknown account");
+      await closeAccountReadSessions(name);
       db.prepare("DELETE FROM email_accounts WHERE name=?").run(name);
       result = { deleted: name, cache_retained: true };
       break;
     }
     case "account-test":
       result = await testAccount(required(rest[0], "account is required"));
+      break;
+    case "account-warm":
+      result = await warmMessageReader(required(rest[0], "account is required"));
       break;
     case "account-folders":
       result = await discoverAccountFolders(required(rest[0], "account is required"));
@@ -337,14 +354,17 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
     }
     case "sync": {
       const requestedAccount = option(rest, "--account");
+      const requestedLimit = option(rest, "--limit", "75");
       const names = requestedAccount ? [requestedAccount] : configuredAccounts().map((account) => account.name);
       const values = await Promise.all(
         names.map((name) =>
           syncAccount({
             name,
             days: numberOption(rest, "--days", 30),
-            limit: numberOption(rest, "--limit", 75),
+            limit: requestedLimit === "all" ? 0 : numberOption(rest, "--limit", 75),
             refresh: rest.includes("--refresh"),
+            scope: option(rest, "--scope", "inbox") as "inbox" | "recommended" | "custom",
+            folders: parseValue<string[]>(option(rest, "--folders", "[]")),
           }),
         ),
       );
@@ -364,6 +384,7 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
         offset: numberOption(rest, "--offset", 0),
         limit: numberOption(rest, "--limit", 20),
         focusUid: option(rest, "--focus"),
+        focusFolder: option(rest, "--focus-folder"),
         includeBodyFetched: true,
       });
       result.mailbox =
@@ -371,7 +392,8 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
           ? null
           : db
               .prepare(
-                "SELECT mailbox_messages messages,mailbox_unseen unseen,last_sync FROM sync_state WHERE account=?",
+                `SELECT SUM(mailbox_messages) messages,SUM(mailbox_unseen) unseen,MAX(last_sync) last_sync
+                FROM sync_state WHERE account=?`,
               )
               .get(account) || null;
       break;
@@ -433,16 +455,32 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       break;
     }
     case "message-context": {
-      const items = parseValue<Array<{ account: string; uid: string }>>(rest[0]);
+      const items = parseValue<Array<{ account: string; uid: string; folder?: string }>>(rest[0]);
       if (!Array.isArray(items) || items.length > 100) throw new Error("invalid selected message context");
-      const find = db.prepare(
-        "SELECT account,account_email,uid,sender,subject,date FROM messages WHERE account=? AND uid=?",
+      const findExact = db.prepare(
+        "SELECT account,account_email,uid,folder,sender,subject,date FROM messages WHERE account=? AND folder=? AND uid=?",
       );
-      result = { messages: items.map((item) => find.get(item.account, String(item.uid))).filter(Boolean) };
+      const findLegacy = db.prepare(
+        `SELECT account,account_email,uid,folder,sender,subject,date FROM messages
+        WHERE account=? AND uid=? ORDER BY CASE WHEN folder='INBOX' THEN 0 ELSE 1 END LIMIT 1`,
+      );
+      result = {
+        messages: items
+          .map((item) =>
+            item.folder
+              ? findExact.get(item.account, item.folder, String(item.uid))
+              : findLegacy.get(item.account, String(item.uid)),
+          )
+          .filter(Boolean),
+      };
       break;
     }
     case "read":
-      result = await readMessage(required(rest[0], "account is required"), required(rest[1], "uid is required"));
+      result = await readMessage(
+        required(rest[0], "account is required"),
+        required(rest[1], "uid is required"),
+        rest[2] || undefined,
+      );
       break;
     case "dashboard":
       result = dashboard();
@@ -581,8 +619,9 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       );
       db.transaction(() => {
         for (let [key, value] of Object.entries(submitted)) {
-          if (["sync_days", "initial_sync_limit"].includes(key))
-            value = Math.max(1, Math.min(Number(value), key === "sync_days" ? 3650 : 10_000));
+          if (key === "sync_days") value = Math.max(1, Math.min(Number(value), 3650));
+          else if (key === "initial_sync_limit")
+            value = value === "all" ? "all" : Math.max(1, Math.min(Number(value), 10_000));
           else if (
             [
               "sync_on_start",
@@ -594,7 +633,25 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
           )
             value = Boolean(value);
           else if (["agent_provider", "agent_model"].includes(key)) value = String(value).slice(0, 200);
-          else if (
+          else if (key === "sync_scope" && !["inbox", "recommended", "custom"].includes(String(value)))
+            throw new Error("invalid sync scope");
+          else if (key === "sync_folders") {
+            if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid sync folders");
+            value = Object.fromEntries(
+              Object.entries(value)
+                .slice(0, 20)
+                .map(([account, folders]) => {
+                  if (!/^[a-z0-9_]{3,100}$/.test(account) || !Array.isArray(folders))
+                    throw new Error("invalid sync folders");
+                  return [
+                    account,
+                    [...new Set(folders.map((folder) => String(folder).trim()).filter(Boolean))]
+                      .slice(0, 100)
+                      .map((folder) => folder.slice(0, 500)),
+                  ];
+                }),
+            );
+          } else if (
             key === "agent_thinking" &&
             !["off", "minimal", "low", "medium", "high", "xhigh"].includes(String(value))
           )
@@ -685,7 +742,11 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
           .prepare(
             `SELECT s.*,(SELECT COUNT(*) FROM agent_events e WHERE e.session_id=s.id) event_count,(SELECT content FROM agent_events e WHERE e.session_id=s.id AND e.event_type='user_prompt' ORDER BY e.id LIMIT 1) first_prompt FROM agent_sessions s ORDER BY s.updated_at DESC`,
           )
-          .all(),
+          .all()
+          .map((session: any) => ({
+            ...session,
+            first_prompt: visibleUserPrompt(session.first_prompt),
+          })),
       };
       break;
     case "session-get":
@@ -709,8 +770,18 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       )
         throw new Error("invalid action or items");
       for (const item of items) {
-        if (!item?.account || !/^\d+$/.test(String(item.uid || ""))) throw new Error("invalid action item");
-        if (!db.prepare("SELECT 1 FROM messages WHERE account=? AND uid=?").get(item.account, String(item.uid)))
+        if (
+          !item?.account ||
+          !/^\d+$/.test(String(item.uid || "")) ||
+          typeof item.source_folder !== "string" ||
+          !item.source_folder.trim()
+        )
+          throw new Error("every action item requires an exact source folder");
+        if (
+          !db
+            .prepare("SELECT 1 FROM messages WHERE account=? AND folder=? AND uid=? AND present=1")
+            .get(item.account, item.source_folder, String(item.uid))
+        )
           throw new Error("proposal contains a message that is not in the local cache");
         if (action === "move" && (!item.folder || !knownMoveDestination(item.account, item.folder)))
           throw new Error("move destination was not found as a selectable IMAP folder");
@@ -733,7 +804,10 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       const id = Number(required(rest[0], "proposal id is required")),
         row = db.prepare("SELECT * FROM actions WHERE id=?").get(id) as any;
       if (row?.status !== "proposed") throw new Error("action is missing or not pending");
-      const applied = await applyMailboxAction(row.action, json(row.items_json, []));
+      const items = json<any[]>(row.items_json, []);
+      if (items.some((item) => typeof item?.source_folder !== "string" || !item.source_folder.trim()))
+        throw new Error("this legacy proposal has no exact source folder; recreate it before applying");
+      const applied = await applyMailboxAction(row.action, items);
       db.prepare("UPDATE actions SET status=?,applied_at=? WHERE id=?").run(applied.status, now(), id);
       result = { id, ...applied };
       break;

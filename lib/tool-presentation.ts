@@ -7,6 +7,7 @@ export function compactEmailSearchResult(result: any) {
     messages: (result.messages || []).map((message: any) => ({
       account: message.account,
       uid: String(message.uid),
+      folder: message.folder,
       sender: message.sender,
       subject: message.subject,
       date: message.date,

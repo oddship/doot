@@ -27,6 +27,7 @@ describe("Doot brand", () => {
 
   it("carries the product theme into the Moat documentation", async () => {
     const layout = await readFile("docs/_layout.html", "utf8");
+    const workflow = await readFile(".github/workflows/docs.yml", "utf8");
     const theme = compactCss(await readFile("docs/_static/theme.css", "utf8"));
     const oatIndex = layout.indexOf("@knadh/oat/oat.min.css");
     const themeIndex = layout.indexOf("_static/theme.css");
@@ -38,5 +39,9 @@ describe("Doot brand", () => {
     expect(theme).toContain("--warning:#b86f12");
     expect(theme).toContain('html[data-theme="dark"]');
     expect(theme).toContain("--primary:#e4a326");
+    expect(workflow).toContain("github.com/oddship/moat@v0.6.3");
+    expect(layout).toContain('{{ siteURL .BasePath "_static/theme.css" }}');
+    expect(layout).toContain('aria-controls="moat-sidebar"');
+    expect(layout).toContain("searchGeneration");
   });
 });

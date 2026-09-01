@@ -80,6 +80,31 @@ describe("Inbox deep links", () => {
     expect(client).toContain('querySelector(".mail-item.active")?.scrollIntoView');
   });
 
+  it("can hand the current filtered search to Doot for refinement", async () => {
+    const inbox = await readFile("components/inbox-client.tsx", "utf8");
+    const workspace = await readFile("components/workspace-client.tsx", "utf8");
+    const runtime = await readFile("lib/agent-runtime.ts", "utf8");
+    expect(inbox).toContain("Refine search with Doot");
+    expect(inbox).toContain("saveSelectedSearch({ account, query: currentQuery })");
+    expect(workspace).toContain("Search: {selectedSearch.query}");
+    expect(workspace).toContain("selectedSearch: loadSelectedSearch()");
+    expect(runtime).toContain("Treat it as the baseline when they ask to narrow, broaden");
+  });
+
+  it("warms reusable readers outside the Inbox render lifecycle", async () => {
+    const inbox = await readFile("components/inbox-client.tsx", "utf8");
+    const page = await readFile("app/inbox/page.tsx", "utf8");
+    const routes = await readFile("lib/api/account-routes.ts", "utf8");
+    const server = await readFile("server.mjs", "utf8");
+    const imap = await readFile("lib/imap.ts", "utf8");
+    expect(inbox).not.toContain("/warm");
+    expect(page).not.toContain("account-warm");
+    expect(routes).toContain('path[2] === "warm"');
+    expect(routes).toContain('store(["account-warm", name])');
+    expect(server).toContain("warmMessageReaders");
+    expect(imap).toContain("warmOperations");
+  });
+
   it("offers numbered pages, maximum result options, and a viewport-bounded shell", async () => {
     const source = compactSource(await readFile("components/inbox-client.tsx", "utf8"));
     const css = compactCss(await readAppCss());

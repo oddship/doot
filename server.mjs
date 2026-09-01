@@ -64,9 +64,28 @@ const schedulerTick = () => {
     headers: { "x-doot-scheduler-token": schedulerToken },
   }).catch((error) => console.error("Scheduler tick failed:", error.message));
 };
+const warmMessageReaders = async () => {
+  try {
+    const response = await fetch(`http://${hostname}:${port}/api/accounts`);
+    if (!response.ok) return;
+    const { accounts = [] } = await response.json();
+    await Promise.allSettled(
+      accounts.slice(0, 12).map((account) =>
+        fetch(`http://${hostname}:${port}/api/accounts/${encodeURIComponent(account.name)}/warm`, {
+          method: "POST",
+        }),
+      ),
+    );
+  } catch (error) {
+    console.error("Message reader warm-up failed:", error.message);
+  }
+};
 server.listen(port, hostname, () => {
   console.log(`Doot listening at http://${hostname}:${port}`);
-  setTimeout(schedulerTick, 1_000).unref();
+  setTimeout(() => {
+    schedulerTick();
+    void warmMessageReaders();
+  }, 1_000).unref();
   schedulerTimer = setInterval(schedulerTick, 30_000);
   schedulerTimer.unref();
 });

@@ -45,6 +45,8 @@ export const handleMailRoutes: ApiRouteHandler = async ({ request, path, key, me
         url.searchParams.get("limit") || "25",
         "--focus",
         url.searchParams.get("focus") || "",
+        "--focus-folder",
+        url.searchParams.get("focus_folder") || "",
       ]),
     );
   if (key === "message" && method === "GET") {
@@ -52,6 +54,7 @@ export const handleMailRoutes: ApiRouteHandler = async ({ request, path, key, me
       "read",
       url.searchParams.get("account") || "",
       url.searchParams.get("uid") || "",
+      url.searchParams.get("folder") || "",
     ]);
     const { settings } = await store<any>(["settings-get"]);
     const hasRemoteImages = /<img\b[^>]*\bsrc\s*=\s*["']?https?:/i.test(message.body_html || "");

@@ -12,6 +12,7 @@ export default async function InboxPage({
   const account = typeof params.account === "string" ? params.account : "all";
   const query = typeof params.query === "string" ? params.query : "";
   const openUid = typeof params.open === "string" ? params.open : undefined;
+  const openFolder = typeof params.folder === "string" ? params.folder : undefined;
   const requestedLimit = typeof params.limit === "string" ? Number(params.limit) : 25;
   const limit = [25, 50, 100].includes(requestedLimit) ? requestedLimit : 25;
   const requestedPage = typeof params.page === "string" ? Number(params.page) : 1;
@@ -30,6 +31,8 @@ export default async function InboxPage({
       String(limit),
       "--focus",
       openUid || "",
+      "--focus-folder",
+      openFolder || "",
     ]),
   ]);
   return (
@@ -39,6 +42,7 @@ export default async function InboxPage({
       initialAccount={account}
       initialQuery={query}
       initialOpenUid={openUid}
+      initialOpenFolder={openFolder}
       initialLimit={limit}
     />
   );

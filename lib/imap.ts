@@ -1,10 +1,20 @@
 import { type FetchMessageObject, ImapFlow, type ListResponse, type MessageAddressObject } from "imapflow";
 import PostalMime from "postal-mime";
-import { accountByName, dateTimestamp, db, now, type StoredAccount } from "@/lib/database";
+import { accountByName, dateTimestamp, db, json, now, type StoredAccount } from "@/lib/database";
 import { buildDraftMime } from "@/lib/draft-mime";
 import type { LocalDraftContent } from "@/lib/drafts";
 import { type FolderMutation, isProtectedMailbox, validateMailboxPath, validateMailboxTarget } from "@/lib/imap-folder";
-import { providerForConnection } from "@/lib/mail-provider";
+import { withImapRetry } from "@/lib/imap-retry";
+import {
+  cacheWindowNeedsRefresh,
+  checkpointMatches,
+  normalizeSyncWindow,
+  planFlagRefresh,
+  type SyncScope,
+  selectSyncFolders,
+  uidBatches,
+} from "@/lib/imap-sync";
+import { providerForConnection, providerForHost } from "@/lib/mail-provider";
 import { planMailboxSync } from "@/lib/sync-selection";
 
 const MAX_MESSAGE_BYTES = 25 * 1024 * 1024;
@@ -53,6 +63,163 @@ async function withMailbox<T>(
       client.close();
     }
   }
+}
+
+const READ_SESSION_IDLE_MS = 10 * 60_000;
+const MAX_READ_SESSIONS = 12;
+
+type ReadSession = {
+  key: string;
+  account: string;
+  folder: string;
+  client?: ImapFlow;
+  broken: boolean;
+  pending: number;
+  lastUsed: number;
+  queue: Promise<void>;
+  idleTimer?: ReturnType<typeof setTimeout>;
+};
+
+const readSessions = new Map<string, ReadSession>();
+const warmOperations = new Map<string, Promise<{ ok: boolean; account: string; warm: boolean }>>();
+
+async function closeReadSession(session: ReadSession, graceful: boolean) {
+  const client = session.client;
+  session.client = undefined;
+  session.broken = false;
+  if (!client) return;
+  if (!graceful) {
+    client.close();
+    return;
+  }
+  try {
+    await client.logout();
+  } catch {
+    client.close();
+  }
+}
+
+function retireReadSession(session: ReadSession) {
+  if (session.idleTimer) clearTimeout(session.idleTimer);
+  if (readSessions.get(session.key) === session) readSessions.delete(session.key);
+  void closeReadSession(session, true);
+}
+
+function scheduleReadSessionIdleClose(session: ReadSession) {
+  if (session.idleTimer) clearTimeout(session.idleTimer);
+  const remaining = Math.max(1, READ_SESSION_IDLE_MS - (Date.now() - session.lastUsed));
+  session.idleTimer = setTimeout(() => {
+    if (session.pending !== 0) return;
+    if (Date.now() - session.lastUsed >= READ_SESSION_IDLE_MS) retireReadSession(session);
+    else scheduleReadSessionIdleClose(session);
+  }, remaining);
+  session.idleTimer.unref?.();
+}
+
+function readSessionFor(account: StoredAccount, folder: string) {
+  const key = `${account.name}\n${folder}`;
+  const current = readSessions.get(key);
+  if (current) return current;
+  if (readSessions.size >= MAX_READ_SESSIONS) {
+    const oldestIdle = [...readSessions.values()]
+      .filter((session) => session.pending === 0)
+      .sort((left, right) => left.lastUsed - right.lastUsed)[0];
+    if (!oldestIdle) return null;
+    retireReadSession(oldestIdle);
+  }
+  const session: ReadSession = {
+    key,
+    account: account.name,
+    folder,
+    broken: false,
+    pending: 0,
+    lastUsed: Date.now(),
+    queue: Promise.resolve(),
+  };
+  readSessions.set(key, session);
+  return session;
+}
+
+async function connectReadSession(session: ReadSession, account: StoredAccount) {
+  if (session.client && !session.broken) return session.client;
+  if (session.client) await closeReadSession(session, false);
+  const client = clientFor(account);
+  session.client = client;
+  session.broken = false;
+  client.on("error", () => {
+    if (session.client === client) session.broken = true;
+  });
+  try {
+    await client.connect();
+    return client;
+  } catch (error) {
+    await closeReadSession(session, false);
+    throw error;
+  }
+}
+
+async function withReusableReadMailbox<T>(
+  account: StoredAccount,
+  folder: string,
+  callback: (client: ImapFlow) => Promise<T>,
+) {
+  const session = readSessionFor(account, folder);
+  if (!session) return withMailbox(account, folder, true, callback);
+  if (session.idleTimer) clearTimeout(session.idleTimer);
+  session.pending += 1;
+  const operation = session.queue.then(async () => {
+    const client = await connectReadSession(session, account);
+    let lock: Awaited<ReturnType<ImapFlow["getMailboxLock"]>> | undefined;
+    let failed = false;
+    try {
+      lock = await client.getMailboxLock(folder, { readOnly: true, description: "Doot reusable read" });
+      return await callback(client);
+    } catch (error) {
+      failed = true;
+      throw error;
+    } finally {
+      lock?.release();
+      if (failed || session.broken) await closeReadSession(session, false);
+    }
+  });
+  session.queue = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  try {
+    return await operation;
+  } finally {
+    session.pending -= 1;
+    session.lastUsed = Date.now();
+    if (session.pending === 0 && readSessions.get(session.key) === session) scheduleReadSessionIdleClose(session);
+  }
+}
+
+export async function warmMessageReader(accountName: string) {
+  const pending = warmOperations.get(accountName);
+  if (pending) return pending;
+  const account = accountByName(accountName);
+  if (!account) throw new Error("unknown account");
+  const operation = withReusableReadMailbox(account, "INBOX", async () => ({
+    ok: true,
+    account: accountName,
+    warm: true,
+  }));
+  warmOperations.set(accountName, operation);
+  void operation.then(
+    () => warmOperations.delete(accountName),
+    () => warmOperations.delete(accountName),
+  );
+  return operation;
+}
+
+export async function closeAccountReadSessions(accountName: string) {
+  const sessions = [...readSessions.values()].filter((session) => session.account === accountName);
+  for (const session of sessions) {
+    if (session.idleTimer) clearTimeout(session.idleTimer);
+    if (readSessions.get(session.key) === session) readSessions.delete(session.key);
+  }
+  await Promise.all(sessions.map((session) => session.queue.then(() => closeReadSession(session, true))));
 }
 
 async function withClient<T>(account: StoredAccount, callback: (client: ImapFlow) => Promise<T>) {
@@ -199,6 +366,8 @@ function headerRow(message: FetchMessageObject) {
       message.envelope?.date?.toUTCString() ||
       (message.internalDate instanceof Date ? message.internalDate.toUTCString() : String(message.internalDate || "")),
     flags,
+    labels: [...(message.labels || [])],
+    providerId: message.emailId || "",
     unread: !flags.includes("\\Seen"),
   };
 }
@@ -209,118 +378,403 @@ export async function testAccount(name: string) {
   return withMailbox(account, "INBOX", true, async () => ({ ok: true, account: name }));
 }
 
-export async function syncAccount(input: { name: string; days: number; limit: number; refresh?: boolean }) {
+async function syncFolder(input: { name: string; folder: string; days: number; limit: number; refresh?: boolean }) {
   const account = accountByName(input.name);
   if (!account) throw new Error("unknown account");
   const started = Date.now();
-  const cached = db
-    .prepare("SELECT COALESCE(MAX(CAST(uid AS INTEGER)),0) value FROM messages WHERE account=?")
-    .get(account.name) as any;
-  const cachedMax = Number(cached.value || 0);
+  const window = normalizeSyncWindow(input.days, input.limit);
+  let retryCount = 0;
   try {
-    const result = await withMailbox(account, "INBOX", true, async (client) => {
-      const mailbox = client.mailbox;
-      if (!mailbox) throw new Error("INBOX did not open");
-      const currentValidity = mailbox.uidValidity.toString();
-      const state = db.prepare("SELECT uid_validity FROM sync_state WHERE account=?").get(account.name) as any;
-      const validityChanged = Boolean(state?.uid_validity && state.uid_validity !== currentValidity);
-      const cutoff = new Date(Date.now() - Math.max(1, Math.min(input.days, 3650)) * 86400_000);
-      const found = await client.search({ since: cutoff }, { uid: true });
-      const cachedRows = db
-        .prepare("SELECT uid,date_ts FROM messages WHERE account=? AND folder='INBOX'")
-        .all(account.name) as Array<{ uid: string; date_ts: number }>;
-      const cachedUids = new Set(validityChanged ? [] : cachedRows.map((row) => Number(row.uid)));
-      const plan = planMailboxSync(Array.isArray(found) ? found.map(Number) : [], cachedUids, input.limit);
-      const { eligible, desired: uids, missing, backfilled } = plan;
-      // Refresh the desired set, not just new UIDs. This both fills historical
-      // gaps and keeps read/unread flags accurate without downloading bodies.
-      const fetched = uids.length
-        ? await client.fetchAll(uids, { uid: true, envelope: true, internalDate: true, flags: true }, { uid: true })
-        : [];
-      const rows = fetched.map(headerRow).sort((a, b) => Number(b.id) - Number(a.id));
-      const unseen = await client.search({ seen: false }, { uid: true });
-      const timestamp = now();
-      const insert =
-        db.prepare(`INSERT INTO messages(account,account_email,uid,sender,subject,date,date_ts,flags_json,unread,present,fetched_at)
-        VALUES(?,?,?,?,?,?,?,?,?,1,?) ON CONFLICT(account,uid) DO UPDATE SET
-        account_email=excluded.account_email,sender=excluded.sender,subject=excluded.subject,
-        date=excluded.date,date_ts=excluded.date_ts,flags_json=excluded.flags_json,
-        unread=excluded.unread,present=1,fetched_at=excluded.fetched_at`);
-      db.transaction(() => {
-        if (validityChanged) db.prepare("DELETE FROM messages WHERE account=?").run(account.name);
-        for (const row of rows)
-          insert.run(
-            account.name,
-            account.username,
-            row.id,
-            row.sender,
-            row.subject,
-            row.date,
-            dateTimestamp(row.date),
-            JSON.stringify(row.flags),
-            Number(row.unread),
-            timestamp,
+    const result = await withImapRetry(
+      () =>
+        withMailbox(account, input.folder, true, async (client) => {
+          const mailbox = client.mailbox;
+          if (!mailbox) throw new Error(`${input.folder} did not open`);
+          const snapshot = {
+            uidValidity: mailbox.uidValidity.toString(),
+            uidNext: Number(mailbox.uidNext || 0),
+            highestModseq: mailbox.highestModseq?.toString() || null,
+            messages: Number(mailbox.exists || 0),
+          };
+          const cutoff = new Date(Date.now() - window.days * 86400_000);
+          const cutoffTimestamp = Math.floor(cutoff.getTime() / 1000);
+          let state = db
+            .prepare("SELECT * FROM sync_state WHERE account=? AND folder=?")
+            .get(account.name, input.folder) as any;
+          const supportsStableIds = client.capabilities.has("X-GM-EXT-1") || client.capabilities.has("OBJECTID");
+          const identityBackfill =
+            window.limit === 0
+              ? db
+                  .prepare(
+                    "SELECT COUNT(*) count FROM messages WHERE account=? AND folder=? AND present=1 AND provider_id=''",
+                  )
+                  .get(account.name, input.folder)
+              : db
+                  .prepare(
+                    `SELECT COUNT(*) count FROM (
+                      SELECT provider_id FROM messages WHERE account=? AND folder=? AND present=1
+                      ORDER BY CAST(uid AS INTEGER) DESC LIMIT ?
+                    ) WHERE provider_id=''`,
+                  )
+                  .get(account.name, input.folder, window.limit);
+          const needsIdentityBackfill = supportsStableIds && Number((identityBackfill as { count: number }).count) > 0;
+          const activeStats = db
+            .prepare(`SELECT COUNT(*) count,
+              SUM(CASE WHEN date_ts<? THEN 1 ELSE 0 END) outside_lookback
+              FROM messages WHERE account=? AND folder=? AND present=1`)
+            .get(cutoffTimestamp, account.name, input.folder) as { count: number; outside_lookback: number | null };
+          const activeWindowMismatch = cacheWindowNeedsRefresh(
+            { active: activeStats.count, outsideLookback: activeStats.outside_lookback },
+            window,
           );
-        const live = new Set(eligible);
-        const markAbsent = db.prepare("UPDATE messages SET present=0 WHERE account=? AND folder='INBOX' AND uid=?");
-        for (const row of cachedRows)
-          if (row.date_ts >= Math.floor(cutoff.getTime() / 1000) && !live.has(Number(row.uid)))
-            markAbsent.run(account.name, row.uid);
-        const newest = Math.max(...eligible, 0);
-        db.prepare(`INSERT INTO sync_state(account,last_uid,last_sync,last_error,uid_validity,mailbox_messages,mailbox_unseen) VALUES(?,?,?,NULL,?,?,?)
-          ON CONFLICT(account) DO UPDATE SET last_uid=excluded.last_uid,last_sync=excluded.last_sync,last_error=NULL,uid_validity=excluded.uid_validity,mailbox_messages=excluded.mailbox_messages,mailbox_unseen=excluded.mailbox_unseen`).run(
-          account.name,
-          newest,
-          timestamp,
-          currentValidity,
-          mailbox.exists,
-          Array.isArray(unseen) ? unseen.length : 0,
-        );
-      })();
-      const cachedNow = Number(
-        (db.prepare("SELECT COUNT(*) count FROM messages WHERE account=? AND present=1").get(account.name) as any)
-          .count,
-      );
-      return {
-        account: account.name,
-        new: missing.length - backfilled,
-        added: missing.length,
-        backfilled,
-        refreshed: rows.length - missing.length,
-        cached: cachedNow,
-        mailbox_messages: mailbox.exists,
-        mailbox_unseen: Array.isArray(unseen) ? unseen.length : 0,
-        uid_validity_changed: validityChanged,
-      };
-    });
-    return { synced_at: now(), accounts: [result], errors: [], elapsed_ms: Date.now() - started };
+          const validityChanged = Boolean(state?.uid_validity && state.uid_validity !== snapshot.uidValidity);
+          if (validityChanged) {
+            const resetAt = now();
+            db.transaction(() => {
+              db.prepare("DELETE FROM messages WHERE account=? AND folder=?").run(account.name, input.folder);
+              db.prepare(`INSERT INTO sync_state(account,folder,last_uid,last_sync,last_error,uid_validity,uid_next,highest_modseq,mailbox_messages,mailbox_unseen,sync_days,sync_limit)
+                VALUES(?,?,0,?,NULL,?,?,NULL,?,NULL,?,?) ON CONFLICT(account,folder) DO UPDATE SET
+                last_uid=0,last_sync=excluded.last_sync,last_error=NULL,uid_validity=excluded.uid_validity,
+                uid_next=excluded.uid_next,highest_modseq=NULL,mailbox_messages=excluded.mailbox_messages,
+                mailbox_unseen=NULL,sync_days=excluded.sync_days,sync_limit=excluded.sync_limit`).run(
+                account.name,
+                input.folder,
+                resetAt,
+                snapshot.uidValidity,
+                snapshot.uidNext,
+                snapshot.messages,
+                window.days,
+                window.limit,
+              );
+            })();
+            state = db
+              .prepare("SELECT * FROM sync_state WHERE account=? AND folder=?")
+              .get(account.name, input.folder) as any;
+          }
+
+          if (
+            checkpointMatches(state, snapshot, window, input.refresh) &&
+            !needsIdentityBackfill &&
+            !activeWindowMismatch
+          ) {
+            const timestamp = now();
+            db.prepare("UPDATE sync_state SET last_sync=?,last_error=NULL WHERE account=? AND folder=?").run(
+              timestamp,
+              account.name,
+              input.folder,
+            );
+            const cachedNow = Number(
+              (
+                db
+                  .prepare("SELECT COUNT(*) count FROM messages WHERE account=? AND folder=? AND present=1")
+                  .get(account.name, input.folder) as any
+              ).count,
+            );
+            return {
+              account: account.name,
+              folder: input.folder,
+              new: 0,
+              added: 0,
+              backfilled: 0,
+              refreshed: 0,
+              cached: cachedNow,
+              mailbox_messages: snapshot.messages,
+              mailbox_unseen: Number(state.mailbox_unseen || 0),
+              uid_validity_changed: false,
+              strategy: "checkpoint",
+              batches: 0,
+            };
+          }
+
+          const found = await client.search({ since: cutoff }, { uid: true });
+          const cachedRows = db
+            .prepare("SELECT uid FROM messages WHERE account=? AND folder=?")
+            .all(account.name, input.folder) as Array<{ uid: string }>;
+          const cachedUids = new Set(cachedRows.map((row) => Number(row.uid)));
+          const cachedMax = Math.max(...cachedUids, 0);
+          const plan = planMailboxSync(Array.isArray(found) ? found.map(Number) : [], cachedUids, window.limit);
+          const { eligible, desired, missing } = plan;
+          const insert =
+            db.prepare(`INSERT INTO messages(account,account_email,uid,folder,sender,subject,date,date_ts,flags_json,labels_json,provider_id,unread,present,fetched_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,?) ON CONFLICT(account,folder,uid) DO UPDATE SET
+            account_email=excluded.account_email,sender=excluded.sender,subject=excluded.subject,
+            date=excluded.date,date_ts=excluded.date_ts,flags_json=excluded.flags_json,labels_json=excluded.labels_json,
+            provider_id=excluded.provider_id,unread=excluded.unread,present=1,fetched_at=excluded.fetched_at`);
+          const updateFlags = db.prepare(`UPDATE messages SET flags_json=?,labels_json=?,unread=?,present=1,fetched_at=?
+            ,provider_id=? WHERE account=? AND folder=? AND uid=?`);
+          const reusableBody = db.prepare(`SELECT body_text,body_html,attachments_json FROM messages
+            WHERE account=? AND provider_id=? AND body_fetched=1 AND NOT(folder=? AND uid=?) LIMIT 1`);
+          const restoreBody = db.prepare(`UPDATE messages SET body_text=?,body_html=?,attachments_json=?,body_fetched=1
+            WHERE account=? AND folder=? AND uid=? AND body_fetched=0`);
+          const fetchedHeaderUids: number[] = [];
+          let refreshed = 0;
+          let batches = 0;
+
+          for (const batch of uidBatches(missing)) {
+            const fetched = await client.fetchAll(
+              batch,
+              { uid: true, envelope: true, internalDate: true, flags: true, labels: true },
+              { uid: true },
+            );
+            const rows = fetched.map(headerRow);
+            const timestamp = now();
+            db.transaction(() => {
+              for (const row of rows) {
+                insert.run(
+                  account.name,
+                  account.username,
+                  row.id,
+                  input.folder,
+                  row.sender,
+                  row.subject,
+                  row.date,
+                  dateTimestamp(row.date),
+                  JSON.stringify(row.flags),
+                  JSON.stringify(row.labels),
+                  row.providerId,
+                  Number(row.unread),
+                  timestamp,
+                );
+                if (row.providerId) {
+                  const source = reusableBody.get(account.name, row.providerId, input.folder, row.id) as
+                    | { body_text: string; body_html: string; attachments_json: string }
+                    | undefined;
+                  if (source)
+                    restoreBody.run(
+                      source.body_text,
+                      source.body_html,
+                      source.attachments_json,
+                      account.name,
+                      input.folder,
+                      row.id,
+                    );
+                }
+              }
+            })();
+            fetchedHeaderUids.push(...rows.map((row) => Number(row.id)));
+            batches += 1;
+          }
+
+          const flagPlan = planFlagRefresh({
+            desiredUids: desired,
+            cachedPresentUids: desired.filter((uid) => cachedUids.has(uid)),
+            supportsCondstore: client.enabled.has("CONDSTORE") && !mailbox.noModseq,
+            previousHighestModseq: state?.highest_modseq,
+            currentHighestModseq: snapshot.highestModseq,
+            forceRefresh: input.refresh || needsIdentityBackfill,
+          });
+          const changedSince =
+            flagPlan.changedSince && /^\d+$/.test(flagPlan.changedSince) ? BigInt(flagPlan.changedSince) : undefined;
+          for (const batch of uidBatches(flagPlan.uids)) {
+            const fetched = await client.fetchAll(
+              batch,
+              { uid: true, flags: true, labels: true },
+              { uid: true, ...(changedSince ? { changedSince } : {}) },
+            );
+            const timestamp = now();
+            db.transaction(() => {
+              for (const message of fetched) {
+                const flags = [...(message.flags || [])];
+                updateFlags.run(
+                  JSON.stringify(flags),
+                  JSON.stringify([...(message.labels || [])]),
+                  Number(!flags.includes("\\Seen")),
+                  timestamp,
+                  message.emailId || "",
+                  account.name,
+                  input.folder,
+                  String(message.uid),
+                );
+              }
+            })();
+            refreshed += fetched.length;
+            batches += 1;
+          }
+
+          const unseen = await client.search({ seen: false }, { uid: true });
+          const timestamp = now();
+          db.transaction(() => {
+            db.prepare("UPDATE messages SET present=0 WHERE account=? AND folder=?").run(account.name, input.folder);
+            for (const batch of uidBatches(desired, 900)) {
+              const placeholders = batch.map(() => "?").join(",");
+              db.prepare(`UPDATE messages SET present=1 WHERE account=? AND folder=? AND uid IN (${placeholders})`).run(
+                account.name,
+                input.folder,
+                ...batch.map(String),
+              );
+            }
+            const newest = Math.max(...eligible, 0);
+            db.prepare(`INSERT INTO sync_state(account,folder,last_uid,last_sync,last_error,uid_validity,uid_next,highest_modseq,mailbox_messages,mailbox_unseen,sync_days,sync_limit)
+              VALUES(?,?,?,?,NULL,?,?,?,?,?,?,?) ON CONFLICT(account,folder) DO UPDATE SET
+              last_uid=excluded.last_uid,last_sync=excluded.last_sync,last_error=NULL,
+              uid_validity=excluded.uid_validity,uid_next=excluded.uid_next,highest_modseq=excluded.highest_modseq,
+              mailbox_messages=excluded.mailbox_messages,mailbox_unseen=excluded.mailbox_unseen,
+              sync_days=excluded.sync_days,sync_limit=excluded.sync_limit`).run(
+              account.name,
+              input.folder,
+              newest,
+              timestamp,
+              snapshot.uidValidity,
+              snapshot.uidNext,
+              snapshot.highestModseq,
+              snapshot.messages,
+              Array.isArray(unseen) ? unseen.length : 0,
+              window.days,
+              window.limit,
+            );
+          })();
+          const cachedNow = Number(
+            (
+              db
+                .prepare("SELECT COUNT(*) count FROM messages WHERE account=? AND folder=? AND present=1")
+                .get(account.name, input.folder) as any
+            ).count,
+          );
+          const backfilled = fetchedHeaderUids.filter((uid) => uid <= cachedMax).length;
+          return {
+            account: account.name,
+            folder: input.folder,
+            new: fetchedHeaderUids.length - backfilled,
+            added: fetchedHeaderUids.length,
+            backfilled,
+            refreshed,
+            cached: cachedNow,
+            mailbox_messages: snapshot.messages,
+            mailbox_unseen: Array.isArray(unseen) ? unseen.length : 0,
+            uid_validity_changed: validityChanged,
+            strategy: flagPlan.strategy === "condstore" ? "incremental-condstore" : "bounded-refresh",
+            batches,
+          };
+        }),
+      { onRetry: () => (retryCount += 1) },
+    );
+    return {
+      synced_at: now(),
+      accounts: [{ ...result, retry_count: retryCount }],
+      errors: [],
+      elapsed_ms: Date.now() - started,
+    };
   } catch (error: any) {
     const message = String(error?.message || error);
-    db.prepare(`INSERT INTO sync_state(account,last_uid,last_sync,last_error) VALUES(?,?,?,?)
-      ON CONFLICT(account) DO UPDATE SET last_sync=excluded.last_sync,last_error=excluded.last_error`).run(
+    const cached = db
+      .prepare("SELECT COALESCE(MAX(CAST(uid AS INTEGER)),0) value FROM messages WHERE account=? AND folder=?")
+      .get(account.name, input.folder) as any;
+    db.prepare(`INSERT INTO sync_state(account,folder,last_uid,last_sync,last_error) VALUES(?,?,?,?,?)
+      ON CONFLICT(account,folder) DO UPDATE SET last_sync=excluded.last_sync,last_error=excluded.last_error`).run(
       account.name,
-      cachedMax,
+      input.folder,
+      Number(cached.value || 0),
       now(),
       message,
     );
     return {
       synced_at: now(),
       accounts: [],
-      errors: [{ account: account.name, error: message }],
+      errors: [{ account: account.name, folder: input.folder, error: message, retry_count: retryCount }],
       elapsed_ms: Date.now() - started,
     };
   }
 }
 
-export async function readMessage(accountName: string, uid: string) {
+export async function syncAccount(input: {
+  name: string;
+  days: number;
+  limit: number;
+  refresh?: boolean;
+  scope?: SyncScope;
+  folders?: string[];
+}) {
+  const started = Date.now();
+  const account = accountByName(input.name);
+  if (!account) throw new Error("unknown account");
+  try {
+    const cachedFolders = (
+      db
+        .prepare("SELECT path,special_use,flags_json FROM imap_folders WHERE account=? ORDER BY path")
+        .all(account.name) as Array<{ path: string; special_use?: string | null; flags_json: string }>
+    ).map((folder) => ({ ...folder, flags: json<string[]>(folder.flags_json, []) }));
+    const discovery = cachedFolders.length
+      ? { folders: cachedFolders, provider: providerForHost(account.host) }
+      : await discoverAccountFolders(account.name);
+    const selected = selectSyncFolders(
+      discovery.folders,
+      discovery.provider,
+      input.scope || "inbox",
+      input.folders || [],
+    );
+    if (!selected.length) throw new Error("no selectable IMAP folders are available for this sync scope");
+    const reports = [];
+    for (const folder of selected)
+      reports.push(
+        await syncFolder({
+          name: account.name,
+          folder: folder.path,
+          days: input.days,
+          limit: input.limit,
+          refresh: input.refresh,
+        }),
+      );
+    const errors = reports.flatMap((report) => report.errors || []);
+    if (!errors.length) {
+      const paths = selected.map((folder) => folder.path);
+      const placeholders = paths.map(() => "?").join(",");
+      db.prepare(`UPDATE messages SET present=0 WHERE account=? AND folder NOT IN (${placeholders})`).run(
+        account.name,
+        ...paths,
+      );
+      db.prepare(`UPDATE sync_state SET highest_modseq=NULL WHERE account=? AND folder NOT IN (${placeholders})`).run(
+        account.name,
+        ...paths,
+      );
+    }
+    const folderResults = reports.flatMap((report) => report.accounts || []);
+    const cached = Number(
+      (db.prepare("SELECT COUNT(*) count FROM messages WHERE account=? AND present=1").get(account.name) as any).count,
+    );
+    return {
+      synced_at: now(),
+      accounts: folderResults.length
+        ? [
+            {
+              account: account.name,
+              folders: folderResults,
+              synced_folders: selected.map((folder) => folder.path),
+              new: folderResults.reduce((sum, result) => sum + Number(result.new || 0), 0),
+              added: folderResults.reduce((sum, result) => sum + Number(result.added || 0), 0),
+              backfilled: folderResults.reduce((sum, result) => sum + Number(result.backfilled || 0), 0),
+              refreshed: folderResults.reduce((sum, result) => sum + Number(result.refreshed || 0), 0),
+              cached,
+              mailbox_messages: folderResults.reduce((sum, result) => sum + Number(result.mailbox_messages || 0), 0),
+              mailbox_unseen: folderResults.reduce((sum, result) => sum + Number(result.mailbox_unseen || 0), 0),
+              strategy: folderResults.length === 1 ? folderResults[0].strategy : "multi-folder",
+              batches: folderResults.reduce((sum, result) => sum + Number(result.batches || 0), 0),
+              retry_count: folderResults.reduce((sum, result) => sum + Number(result.retry_count || 0), 0),
+            },
+          ]
+        : [],
+      errors,
+      elapsed_ms: Date.now() - started,
+    };
+  } catch (error: any) {
+    return {
+      synced_at: now(),
+      accounts: [],
+      errors: [{ account: account.name, error: String(error?.message || error) }],
+      elapsed_ms: Date.now() - started,
+    };
+  }
+}
+
+export async function readMessage(accountName: string, uid: string, folder?: string) {
   const account = accountByName(accountName);
   if (!account) throw new Error("unknown account");
   let existing = db
-    .prepare("SELECT * FROM messages WHERE account=? AND uid=? AND present=1")
-    .get(accountName, uid) as any;
-  if (!existing) throw new Error("message is no longer available in Inbox");
+    .prepare(`SELECT * FROM messages WHERE account=? AND uid=? AND present=1
+      ${folder ? "AND folder=?" : ""} ORDER BY CASE WHEN folder='INBOX' THEN 0 ELSE 1 END,date_ts DESC LIMIT 1`)
+    .get(accountName, uid, ...(folder ? [folder] : [])) as any;
+  if (!existing) throw new Error("message is no longer available in the synced mailbox cache");
   if (!existing.body_fetched) {
-    const parsed = await withMailbox(account, existing.folder || "INBOX", true, async (client) => {
+    const parsed = await withReusableReadMailbox(account, existing.folder || "INBOX", async (client) => {
       const metadata = await client.fetchOne(uid, { uid: true, size: true }, { uid: true });
       if (!metadata) throw new Error("message not found upstream");
       if ((metadata.size || 0) > MAX_MESSAGE_BYTES) throw new Error("message exceeds the 25 MB safe reading limit");
@@ -344,12 +798,13 @@ export async function readMessage(accountName: string, uid: string) {
             : 0,
     }));
     db.prepare(
-      `UPDATE messages SET body_text=?,body_html=?,attachments_json=?,body_fetched=1,fetched_at=? WHERE account=? AND uid=?`,
-    ).run(parsed.text || "", parsed.html || "", JSON.stringify(attachments), now(), accountName, uid);
+      `UPDATE messages SET body_text=?,body_html=?,attachments_json=?,body_fetched=1,fetched_at=?
+      WHERE account=? AND folder=? AND uid=?`,
+    ).run(parsed.text || "", parsed.html || "", JSON.stringify(attachments), now(), accountName, existing.folder, uid);
     existing = db
-      .prepare("SELECT * FROM messages WHERE account=? AND uid=? AND present=1")
-      .get(accountName, uid) as any;
-    if (!existing) throw new Error("message is no longer available in Inbox");
+      .prepare("SELECT * FROM messages WHERE account=? AND folder=? AND uid=? AND present=1")
+      .get(accountName, existing.folder, uid) as any;
+    if (!existing) throw new Error("message is no longer available in the synced mailbox cache");
   }
   const value = { ...existing, attachments: JSON.parse(existing.attachments_json || "[]") };
   delete value.attachments_json;
@@ -367,23 +822,35 @@ function requireApplied(value: unknown, operation: string) {
 
 export async function applyMailboxAction(
   action: "archive" | "move" | "delete",
-  items: Array<{ account: string; uid: string; folder?: string }>,
+  items: Array<{ account: string; uid: string; source_folder: string; folder?: string }>,
 ) {
   const results: any[] = [],
     errors: any[] = [];
   const groups = new Map<string, typeof items>();
-  for (const item of items) groups.set(item.account, [...(groups.get(item.account) || []), item]);
-  for (const [accountName, accountItems] of groups) {
+  for (const item of items) {
+    if (!item.source_folder) throw new Error("every mailbox action requires an exact source folder");
+    const key = JSON.stringify([item.account, item.source_folder]);
+    groups.set(key, [...(groups.get(key) || []), item]);
+  }
+  for (const [key, accountItems] of groups) {
+    const [accountName, sourceFolder] = JSON.parse(key) as [string, string];
     const account = accountByName(accountName);
     if (!account) {
       errors.push(...accountItems.map((item) => ({ item, error: "unknown account" })));
       continue;
     }
     try {
-      await withMailbox(account, "INBOX", false, async (client) => {
+      await withMailbox(account, sourceFolder, false, async (client) => {
+        const provider = providerForConnection(client.capabilities, account.host);
+        const sourceSpecialUse = (
+          db
+            .prepare("SELECT special_use FROM imap_folders WHERE account=? AND path=?")
+            .get(accountName, sourceFolder) as { special_use?: string } | undefined
+        )?.special_use;
+        const sourceIsAllMail = provider === "gmail" && sourceSpecialUse === "\\All";
         if (action === "archive") {
           const uids = accountItems.map((item) => Number(item.uid));
-          if (providerForConnection(client.capabilities, account.host) === "gmail")
+          if (provider === "gmail")
             requireApplied(
               await client.messageFlagsRemove(uids, ["\\Inbox"], { uid: true, useLabels: true, silent: true }),
               "archive",
@@ -393,24 +860,64 @@ export async function applyMailboxAction(
               await client.messageMove(uids, await specialMailbox(client, "\\Archive", "Archive"), { uid: true }),
               "archive",
             );
-          results.push(...accountItems.map((item) => ({ account: accountName, uid: item.uid, ok: true })));
+          results.push(
+            ...accountItems.map((item) => ({
+              account: accountName,
+              uid: item.uid,
+              source_folder: sourceFolder,
+              cache_hidden: !sourceIsAllMail,
+              ok: true,
+            })),
+          );
         } else if (action === "delete") {
           const uids = accountItems.map((item) => Number(item.uid));
-          if (providerForConnection(client.capabilities, account.host) === "gmail")
+          if (provider === "gmail")
             requireApplied(
               await client.messageMove(uids, await specialMailbox(client, "\\Trash", "[Gmail]/Trash"), { uid: true }),
               "delete",
             );
           else requireApplied(await client.messageDelete(uids, { uid: true }), "delete");
-          results.push(...accountItems.map((item) => ({ account: accountName, uid: item.uid, ok: true })));
+          results.push(
+            ...accountItems.map((item) => ({
+              account: accountName,
+              uid: item.uid,
+              source_folder: sourceFolder,
+              cache_hidden: true,
+              ok: true,
+            })),
+          );
         } else {
           for (const item of accountItems) {
             if (!item.folder || !/^[\w .@+\-/]{1,100}$/.test(item.folder)) {
               errors.push({ item, error: "invalid destination folder" });
               continue;
             }
-            requireApplied(await client.messageMove(Number(item.uid), item.folder, { uid: true }), "move");
-            results.push({ account: accountName, uid: item.uid, ok: true });
+            if (provider === "gmail") {
+              requireApplied(
+                await client.messageFlagsAdd(Number(item.uid), [item.folder], {
+                  uid: true,
+                  useLabels: true,
+                  silent: true,
+                }),
+                "label",
+              );
+              if (!sourceIsAllMail)
+                requireApplied(
+                  await client.messageFlagsRemove(
+                    Number(item.uid),
+                    [sourceFolder.toLowerCase() === "inbox" ? "\\Inbox" : sourceFolder],
+                    { uid: true, useLabels: true, silent: true },
+                  ),
+                  "move",
+                );
+            } else requireApplied(await client.messageMove(Number(item.uid), item.folder, { uid: true }), "move");
+            results.push({
+              account: accountName,
+              uid: item.uid,
+              source_folder: sourceFolder,
+              cache_hidden: !sourceIsAllMail,
+              ok: true,
+            });
           }
         }
       });
@@ -418,9 +925,28 @@ export async function applyMailboxAction(
       errors.push(...accountItems.map((item) => ({ item, error: String(error?.message || error) })));
     }
   }
-  const hide = db.prepare("UPDATE messages SET present=0 WHERE account=? AND uid=?");
+  const hide = db.prepare("UPDATE messages SET present=0 WHERE account=? AND folder=? AND uid=?");
+  const updateLabels = db.prepare("UPDATE messages SET labels_json=? WHERE account=? AND folder=? AND uid=?");
+  const selectLabels = db.prepare("SELECT labels_json FROM messages WHERE account=? AND folder=? AND uid=?");
   db.transaction(() => {
-    for (const result of results) hide.run(result.account, result.uid);
+    for (const result of results) {
+      if (result.cache_hidden) hide.run(result.account, result.source_folder, result.uid);
+      else {
+        const row = selectLabels.get(result.account, result.source_folder, result.uid) as
+          | { labels_json?: string }
+          | undefined;
+        const labels = new Set<string>(json(row?.labels_json, []));
+        labels.delete("\\Inbox");
+        const item = items.find(
+          (candidate) =>
+            candidate.account === result.account &&
+            candidate.uid === result.uid &&
+            candidate.source_folder === result.source_folder,
+        );
+        if (action === "move" && item?.folder) labels.add(item.folder);
+        updateLabels.run(JSON.stringify([...labels]), result.account, result.source_folder, result.uid);
+      }
+    }
   })();
   return { status: errors.length ? "partial_failure" : "applied", results, errors };
 }

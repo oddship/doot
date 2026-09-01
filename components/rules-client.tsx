@@ -24,7 +24,15 @@ import { saveSelectedRule } from "@/lib/client-rule-selection";
 import type { MailProvider } from "@/lib/mail-provider";
 import type { EmailRule as Rule } from "@/lib/rules";
 
-type Mail = { account: string; account_email: string; uid: string; sender: string; subject: string; date: string };
+type Mail = {
+  account: string;
+  account_email: string;
+  uid: string;
+  folder: string;
+  sender: string;
+  subject: string;
+  date: string;
+};
 type Account = { name: string; email: string; provider?: MailProvider };
 
 function FlowStatus({ rule, side = "bottom" }: { rule: Rule; side?: "top" | "bottom" }) {
@@ -63,6 +71,7 @@ export function RulesClient({
   const [preview, setPreview] = useState<{ messages: Mail[]; total: number } | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [proposal, setProposal] = useState<any>(null);
+  const [applying, setApplying] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Rule | null>(null);
   const [deleting, setDeleting] = useState(false);
   const active = rules.find((rule) => rule.id === activeId);
@@ -164,6 +173,8 @@ export function RulesClient({
     });
   };
   const apply = async () => {
+    if (!proposal || applying) return;
+    setApplying(true);
     try {
       const result = await apiJson<any>(
         `/api/rules/${proposal.rule.id}/run`,
@@ -176,6 +187,8 @@ export function RulesClient({
       else toast.info("Flow finished", `Status: ${result.applied?.status || "unknown"}`);
     } catch (error) {
       toast.error("Could not run flow", errorMessage(error, "Please try again."));
+    } finally {
+      setApplying(false);
     }
   };
   useEffect(() => {
@@ -376,8 +389,8 @@ export function RulesClient({
                       <div className="rule-message-list">
                         {preview.messages.map((mail) => (
                           <a
-                            key={`${mail.account}:${mail.uid}`}
-                            href={`/inbox?account=${encodeURIComponent(mail.account)}&open=${mail.uid}`}
+                            key={`${mail.account}:${mail.folder}:${mail.uid}`}
+                            href={`/inbox?account=${encodeURIComponent(mail.account)}&open=${mail.uid}&folder=${encodeURIComponent(mail.folder)}`}
                           >
                             <div>
                               <strong>{mail.subject || "(no subject)"}</strong>
@@ -503,19 +516,24 @@ export function RulesClient({
           </div>
         )}
       </Dialog>
-      <Dialog open={Boolean(proposal)} title="Approve and run flow" onClose={() => setProposal(null)}>
-        <div className="rule-definition">
-          <div>
+      <Dialog
+        open={Boolean(proposal)}
+        title="Approve and run flow"
+        closeDisabled={applying}
+        onClose={() => !applying && setProposal(null)}
+      >
+        <div className="rule-definition rule-approval-definition">
+          <div className="rule-approval-filter">
             <span>Filter</span>
             <code>{proposal?.rule?.query}</code>
+          </div>
+          <div className="rule-approval-account">
+            <span>Account</span>
+            <strong>{proposal?.rule ? accountEmail(proposal.rule.account) : ""}</strong>
           </div>
           <div>
             <span>Action</span>
             <strong>{proposal?.rule ? actionLabel(proposal.rule) : ""}</strong>
-          </div>
-          <div>
-            <span>Account</span>
-            <strong>{proposal?.rule ? accountEmail(proposal.rule.account) : ""}</strong>
           </div>
           <div>
             <span>This run</span>
@@ -537,7 +555,7 @@ export function RulesClient({
         {proposal?.messages?.length ? (
           <div className="rule-message-list">
             {proposal.messages.map((mail: Mail) => (
-              <div key={`${mail.account}:${mail.uid}`}>
+              <div key={`${mail.account}:${mail.folder}:${mail.uid}`}>
                 <div>
                   <strong>{mail.subject || "(no subject)"}</strong>
                   <span>{mail.sender}</span>
@@ -546,16 +564,25 @@ export function RulesClient({
             ))}
           </div>
         ) : null}
-        <div className="memory-dialog-actions">
-          <Button variant="outline" tooltip="Return without changing email" onClick={() => setProposal(null)}>
+        {applying && <p className="mailbox-apply-status">Updating the mailbox. Keep this dialog open…</p>}
+        <div className="memory-dialog-actions" aria-busy={applying}>
+          <Button
+            variant="outline"
+            tooltip={applying ? undefined : "Return without changing email"}
+            tooltipSide="top"
+            disabled={applying}
+            onClick={() => setProposal(null)}
+          >
             Cancel
           </Button>
           <Button
             variant={proposal?.rule?.action === "delete" ? "danger" : "default"}
-            tooltip="Apply this reviewed batch"
+            tooltip={applying ? undefined : "Apply this reviewed batch"}
+            tooltipSide="top"
+            disabled={applying}
             onClick={apply}
           >
-            Approve and run
+            {applying ? "Applying…" : "Approve and run"}
           </Button>
         </div>
       </Dialog>

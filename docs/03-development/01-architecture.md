@@ -33,7 +33,11 @@ Schedules are local process timers, not an external task service. A missed persi
 
 ## Performance choices
 
-SQLite uses WAL, normal synchronous mode, a busy timeout, memory temp tables, and targeted indexes. Hidden workspace tabs stop two-second HTTP polling while detached agent work continues; visibility restoration and WebSocket events refresh the UI. Email frame documents are memoized and resize from contained content.
+SQLite uses WAL, normal synchronous mode, a busy timeout, memory temp tables, and targeted indexes. Messages and sync checkpoints use folder-scoped IMAP identity: `(account, folder, UID)`. The sync scope is user-configurable: Inbox only; a provider-recommended scope that uses Gmail All Mail once or standard IMAP Inbox, Archive, and Sent; or exact custom folders discovered from the server. Unselected folder rows become inactive without discarding cached bodies.
+
+IMAP sync discovers candidate UIDs first, then fetches headers and flag changes in bounded UID batches. Each completed header batch is committed immediately, so a transient disconnect can retry with a fresh connection without discarding completed work. UIDVALIDITY protects cached UID identity; UIDNEXT, message count, sync-window settings, and the server's highest modification sequence form a durable per-folder checkpoint. On CONDSTORE servers, unchanged checkpoints skip message fetches and changed checkpoints request only flag/label changes since the prior modification sequence. Servers without CONDSTORE use the same bounded cache window without assuming unsupported incremental state. Gmail or OBJECTID provider IDs let Doot reuse a lazily cached body when the same message appears through another synchronized folder.
+
+Hidden workspace tabs stop two-second HTTP polling while detached agent work continues; visibility restoration and WebSocket events refresh the UI. Email frame documents are memoized and resize from contained content.
 
 ## Trust boundaries
 

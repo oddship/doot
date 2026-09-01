@@ -22,7 +22,7 @@ type Draft = {
     body: string;
     in_reply_to?: string;
     references: string[];
-    context_messages: Array<{ account: string; uid: string }>;
+    context_messages: Array<{ account: string; uid: string; folder?: string }>;
   };
 };
 
@@ -175,7 +175,7 @@ export function DraftsClient({
           </Button>
         </div>
       </header>
-      <div className="drafts-layout">
+      <div className={`drafts-layout ${drafts.length ? "" : "drafts-layout-empty"}`}>
         <Card className="draft-list">
           {drafts.length ? (
             drafts.map((draft) => (

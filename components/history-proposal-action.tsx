@@ -10,7 +10,7 @@ type Proposal = {
   id: number;
   action: "archive" | "move" | "delete";
   status: string;
-  items: Array<{ account: string; uid: string; folder?: string }>;
+  items: Array<{ account: string; uid: string; source_folder?: string; folder?: string }>;
   reason?: string;
 };
 
@@ -19,6 +19,7 @@ export function HistoryProposalAction({ proposal }: { proposal: Proposal }) {
   const [status, setStatus] = useState(proposal.status);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const hasExactSources = proposal.items.every((item) => Boolean(item.source_folder));
   const apply = async () => {
     setBusy(true);
     try {
@@ -45,9 +46,13 @@ export function HistoryProposalAction({ proposal }: { proposal: Proposal }) {
         {proposal.reason && <small>{proposal.reason}</small>}
       </div>
       {status === "proposed" ? (
-        <Button tooltip="Review and approve mailbox changes" onClick={() => setConfirming(true)}>
-          <ShieldCheck size={14} /> Review &amp; apply
-        </Button>
+        hasExactSources ? (
+          <Button tooltip="Review and approve mailbox changes" onClick={() => setConfirming(true)}>
+            <ShieldCheck size={14} /> Review &amp; apply
+          </Button>
+        ) : (
+          <Badge tone="error">Recreate proposal · source folder missing</Badge>
+        )
       ) : (
         <Badge tone={status === "applied" ? "good" : "error"}>
           <CheckCircle2 size={12} /> {status}

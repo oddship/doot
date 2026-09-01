@@ -55,7 +55,7 @@
 .rule-list-item small {
   color: var(--muted);
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .rules-detail {
   display: flex;
@@ -98,7 +98,7 @@
   text-overflow: ellipsis;
 }
 .rule-definition span {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   text-transform: uppercase;
   font-weight: 700;
@@ -106,6 +106,32 @@
 }
 .rule-definition code {
   white-space: nowrap;
+}
+.rule-definition.rule-approval-definition {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 0;
+}
+.rule-approval-filter,
+.rule-approval-account {
+  grid-column: 1 / -1;
+}
+.rule-approval-definition strong,
+.rule-approval-definition code {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.dialog .rule-message-list {
+  max-height: min(36vh, 320px);
+  overflow-y: auto;
+}
+.dialog .rule-message-list > div {
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--line);
+}
+.dialog .rule-message-list > div:last-child {
+  border-bottom: 0;
 }
 .rule-preview > .node-title-row {
   margin-bottom: 14px;
@@ -147,7 +173,7 @@
 }
 .rule-message-list span,
 .rule-message-list time {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 3px;
   white-space: nowrap;
@@ -168,7 +194,7 @@
 .field-help {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 6px;
 }
 .rule-delete-warning {
@@ -220,5 +246,8 @@
   .rule-message-list > a {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .rule-approval-definition {
+    grid-template-columns: 1fr;
   }
 }

@@ -108,11 +108,6 @@ body {
 .reader-pane {
   min-width: 0;
 }
-.toolbar {
-  display: grid;
-  grid-template-columns: minmax(170px, 0.8fr) minmax(190px, 1fr) 38px auto;
-  align-items: center;
-}
 .mail-item {
   grid-template-columns: 22px minmax(0, 1fr) auto;
   padding: 12px 14px;
@@ -317,8 +312,5 @@ body {
   .history-grid > .history-detail:first-child {
     position: static;
     max-height: none;
-  }
-  .toolbar {
-    grid-template-columns: minmax(160px, 0.8fr) minmax(180px, 1fr) 38px auto;
   }
 }

@@ -10,7 +10,14 @@ const inboxQuery = z
   );
 
 const workspaceActionIntentSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("open_message"), account: short, uid: z.string().regex(/^\d+$/) }).strict(),
+  z
+    .object({
+      type: z.literal("open_message"),
+      account: short,
+      uid: z.string().regex(/^\d+$/),
+      folder: short.optional(),
+    })
+    .strict(),
   z.object({ type: z.literal("filter_inbox"), account: short.optional(), query: inboxQuery.optional() }).strict(),
   z
     .object({
@@ -18,7 +25,16 @@ const workspaceActionIntentSchema = z.discriminatedUnion("type", [
       action: z.enum(["archive", "move", "delete"]),
       reason: text,
       items: z
-        .array(z.object({ account: short, uid: z.string().regex(/^\d+$/), folder: short.optional() }).strict())
+        .array(
+          z
+            .object({
+              account: short,
+              uid: z.string().regex(/^\d+$/),
+              source_folder: short,
+              folder: short.optional(),
+            })
+            .strict(),
+        )
         .min(1)
         .max(40),
     })
@@ -33,6 +49,7 @@ const message = z
   .object({
     account: short,
     uid: z.string().regex(/^\d+$/),
+    folder: short.optional(),
     sender: short,
     subject: z.string().max(500),
     date: z.string().max(100).optional(),

@@ -47,6 +47,7 @@ export async function startSync(input: { trigger?: "manual" | "schedule"; schedu
         schedule_id: input.scheduleId,
         sync_days: settings.sync_days,
         per_account_limit: settings.initial_sync_limit,
+        sync_scope: settings.sync_scope,
       },
     }),
   ]);
@@ -74,6 +75,10 @@ export async function startSync(input: { trigger?: "manual" | "schedule"; schedu
           String(settings.sync_days),
           "--limit",
           String(settings.initial_sync_limit),
+          "--scope",
+          String(settings.sync_scope || "inbox"),
+          "--folders",
+          JSON.stringify(settings.sync_folders?.[account.name] || []),
         ]);
         target.status = result.errors?.length ? "error" : "done";
         if (result.errors?.length) target.error = result.errors.map((item: any) => item.error).join("; ");

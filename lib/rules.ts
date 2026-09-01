@@ -117,9 +117,10 @@ export function prepareRuleProposal(id: number) {
   const rule = getRule(id);
   const matches = queryMessages({ account: rule.account, query: rule.query, limit: 100 });
   if (!matches.messages.length) throw new Error("rule has no current matches");
-  const items = (matches.messages as Array<{ account: string; uid: string }>).map((message) => ({
+  const items = (matches.messages as Array<{ account: string; uid: string; folder: string }>).map((message) => ({
     account: message.account,
     uid: message.uid,
+    source_folder: message.folder,
     ...(rule.action === "move" ? { folder: rule.target_folder || undefined } : {}),
   }));
   return { rule, matched: matches.total, items };

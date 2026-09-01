@@ -16,7 +16,7 @@ Large inboxes are working archives, but conventional clients make broad analysis
 
 ## v0.1 requirements
 
-- Multi-account IMAP configuration, connection tests, folder discovery/CRUD, incremental sync, and per-account progress.
+- Multi-account IMAP configuration, connection tests, folder discovery/CRUD, configurable folder-scoped incremental sync, and per-account progress.
 - Paginated cached Inbox with search, account filter, cross-page selection, and a safe reading pane.
 - Persistent agent conversations, manual Organize, selected-message context, tool/reasoning visibility, and generated workspaces.
 - Editable Flows and proposals with a mandatory browser confirmation before mutation.

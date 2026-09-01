@@ -27,7 +27,28 @@ describe("widescreen UI contract", () => {
   it("provides a repeatable 1920px screenshot audit", async () => {
     const audit = await readFile("scripts/ui-audit.mjs", "utf8");
     expect(audit).toContain("width: 1920, height: 1080");
+    expect(audit).toContain("width: 390, height: 844");
     expect(audit).toContain("horizontalOverflow");
     expect(audit).toContain("consoleErrors");
+  });
+
+  it("contains narrow layouts without clipping the primary navigation or Inbox toolbar", async () => {
+    const inbox = await readFile("components/inbox-client.tsx", "utf8");
+    const globals = await readFile("app/globals.css", "utf8");
+    const [responsive, mailReader] = await Promise.all([
+      readFile("app/styles/responsive.css", "utf8"),
+      readFile("app/styles/mail-reader.css", "utf8"),
+    ]);
+    expect(globals.trim().endsWith('@import "./styles/responsive.css";')).toBe(true);
+    expect(responsive).toContain("overflow-x: auto");
+    expect(responsive).toContain(".session-list");
+    expect(mailReader).toContain("container-type: inline-size");
+    expect(mailReader).toContain("grid-column: 1 / -1");
+    expect(mailReader).toContain("minmax(220px, 320px) minmax(300px, 1fr) auto");
+    expect(mailReader).toContain(".inbox-search-control");
+    expect(inbox).toContain('className="inbox-toolbar"');
+    expect(inbox).toContain('className="inbox-select-page"');
+    expect(inbox).toContain("Search cached mail");
+    expect(inbox.indexOf('className="inbox-toolbar"')).toBeLessThan(inbox.indexOf('<section className="inbox-list">'));
   });
 });

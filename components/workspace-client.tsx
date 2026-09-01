@@ -1,5 +1,5 @@
 "use client";
-import { Eye, FilePenLine, MailCheck, Pencil, Plus, ShieldCheck, Sparkles, X } from "lucide-react";
+import { ArrowRight, Eye, FilePenLine, MailCheck, Pencil, Plus, Search, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   Artifact,
@@ -33,12 +33,24 @@ import {
   type SelectedRuleRef,
   saveSelectedRule,
 } from "@/lib/client-rule-selection";
-import { loadSelectedIds, loadSelectedRefs, SELECTION_EVENT, saveSelectedIds } from "@/lib/client-selection";
+import {
+  loadSelectedSearch,
+  SEARCH_SELECTION_EVENT,
+  type SelectedSearchRef,
+  saveSelectedSearch,
+} from "@/lib/client-search-selection";
+import {
+  loadSelectedIds,
+  loadSelectedRefs,
+  SELECTION_EVENT,
+  saveSelectedIds,
+  selectedMessageId,
+} from "@/lib/client-selection";
 
 type ReadApproval = {
   id: string;
   reason: string;
-  messages: Array<{ account: string; uid: string; sender?: string; subject?: string }>;
+  messages: Array<{ account: string; uid: string; folder?: string; sender?: string; subject?: string }>;
   status?: "pending" | "approved" | "denied";
 };
 
@@ -76,6 +88,21 @@ function AgentTaskStatus({ status, detail }: { status: string; detail: string })
         )
       }
     />
+  );
+}
+
+function ArtifactReviewLink({ href, label, tooltip }: { href: string; label: string; tooltip: string }) {
+  return (
+    <a
+      className="button button-outline button-sm artifact-review-link"
+      href={href}
+      data-tooltip={tooltip}
+      data-tooltip-side="top"
+      aria-description={tooltip}
+    >
+      {label}
+      <ArrowRight size={14} aria-hidden="true" />
+    </a>
   );
 }
 
@@ -171,6 +198,7 @@ export function WorkspaceClient({
   const [selectedCount, setSelectedCount] = useState(0);
   const [selectedRule, setSelectedRule] = useState<SelectedRuleRef | null>(null);
   const [selectedDraft, setSelectedDraft] = useState<SelectedDraftRef | null>(null);
+  const [selectedSearch, setSelectedSearch] = useState<SelectedSearchRef | null>(null);
   const [agentModel, setAgentModel] = useState<AgentModelSummary | null>(initialModel || null);
   const [conversationReady, setConversationReady] = useState(false);
   const [conversationSessionId, setConversationSessionId] = useState<string | undefined>(undefined);
@@ -220,6 +248,16 @@ export function WorkspaceClient({
     return () => {
       window.removeEventListener("storage", refresh);
       window.removeEventListener(DRAFT_SELECTION_EVENT, refresh);
+    };
+  }, []);
+  useEffect(() => {
+    const refresh = () => setSelectedSearch(loadSelectedSearch());
+    refresh();
+    window.addEventListener("storage", refresh);
+    window.addEventListener(SEARCH_SELECTION_EVENT, refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener(SEARCH_SELECTION_EVENT, refresh);
     };
   }, []);
   useEffect(() => {
@@ -322,6 +360,7 @@ export function WorkspaceClient({
           selected: loadSelectedRefs(),
           selectedRule: loadSelectedRule(),
           selectedDraft: loadSelectedDraft(),
+          selectedSearch: loadSelectedSearch(),
         }),
       });
       if (!response.ok || !response.body) throw new Error((await response.json()).error || "Doot request failed");
@@ -403,7 +442,7 @@ export function WorkspaceClient({
       ),
     );
   const approveRead = (request: ReadApproval) => {
-    saveSelectedIds([...request.messages.map((message) => `${message.account}:${message.uid}`), ...loadSelectedIds()]);
+    saveSelectedIds([...request.messages.map(selectedMessageId), ...loadSelectedIds()]);
     setReadApprovalStatus(request.id, "approved");
     void run(
       `I approved body access for the ${request.messages.length} requested message${request.messages.length === 1 ? "" : "s"}. Read the selected message${request.messages.length === 1 ? "" : "s"} now and continue my task.`,
@@ -480,6 +519,23 @@ export function WorkspaceClient({
                 </Button>
               </div>
             )}
+            {selectedSearch && (
+              <div className="selected-rule-context">
+                <Badge tone="selected" title="This Inbox search will be included as Doot context">
+                  <Search size={14} />
+                  Search: {selectedSearch.query}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Clear selected search"
+                  tooltip="Remove search from context"
+                  onClick={() => saveSelectedSearch(null)}
+                >
+                  <X size={14} />
+                </Button>
+              </div>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -513,19 +569,30 @@ export function WorkspaceClient({
                     ))}
                   {entry.artifact && (
                     <Artifact title={entry.artifact.title}>
-                      <p>
-                        Saved locally as {entry.artifact.kind}.{" "}
-                        {entry.artifact.kind === "draft" && (
-                          <a href={entry.artifact.review_url || `/drafts/${entry.artifact.id}`}>Review draft</a>
-                        )}
-                      </p>
+                      {entry.artifact.kind === "draft" ? (
+                        <div className="artifact-review-row">
+                          <span>Saved locally as a draft.</span>
+                          <ArtifactReviewLink
+                            href={entry.artifact.review_url || `/drafts/${entry.artifact.id}`}
+                            label="Review draft"
+                            tooltip="Open this draft for review"
+                          />
+                        </div>
+                      ) : (
+                        <p>Saved locally as {entry.artifact.kind}.</p>
+                      )}
                     </Artifact>
                   )}
                   {entry.rule && (
                     <Artifact title={entry.rule.name}>
-                      <p>
-                        Saved as a disabled flow suggestion. <a href={`/flows/${entry.rule.id}`}>Review flow</a>
-                      </p>
+                      <div className="artifact-review-row">
+                        <span>Saved as a disabled flow suggestion.</span>
+                        <ArtifactReviewLink
+                          href={`/flows/${entry.rule.id}`}
+                          label="Review flow"
+                          tooltip="Open this flow for review"
+                        />
+                      </div>
                     </Artifact>
                   )}
                   {entry.readApproval && (
@@ -534,7 +601,7 @@ export function WorkspaceClient({
                         <p>{entry.readApproval.reason}</p>
                         <ul>
                           {entry.readApproval.messages.map((message) => (
-                            <li key={`${message.account}:${message.uid}`}>
+                            <li key={`${message.account}:${message.folder || "INBOX"}:${message.uid}`}>
                               <strong>{message.subject || "(no subject)"}</strong>
                               <span>{message.sender || `${message.account} · UID ${message.uid}`}</span>
                             </li>
@@ -588,13 +655,15 @@ export function WorkspaceClient({
               <Sparkles size={16} />
               Organize
             </Button>
-            {(selectedDraft || selectedRule || selectedCount > 0) && (
+            {(selectedDraft || selectedRule || selectedSearch || selectedCount > 0) && (
               <span className="muted" style={{ alignSelf: "center", fontSize: 12 }}>
                 {selectedDraft
                   ? `Ask Doot to compose or revise “${selectedDraft.title}”`
                   : selectedRule
                     ? `Ask Doot to refine, rename, or change the action for “${selectedRule.name}”`
-                    : `${selectedCount} selected email${selectedCount === 1 ? "" : "s"} will be included as context`}
+                    : selectedSearch
+                      ? `Ask Doot to narrow or broaden “${selectedSearch.query}”`
+                      : `${selectedCount} selected email${selectedCount === 1 ? "" : "s"} will be included as context`}
               </span>
             )}
           </div>

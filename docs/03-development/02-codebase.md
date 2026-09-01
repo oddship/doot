@@ -21,7 +21,7 @@ server.mjs           Next.js + WebSocket process entry point
 - `lib/database.ts` owns connection setup, migrations, settings defaults, and indexed query primitives.
 - `lib/store.ts` is the compatibility command boundary used by routes and agent tooling. New domain behavior should live in a focused module and be called from this boundary.
 - `lib/api/` contains the typed catch-all API dispatcher and bounded domain handlers. `app/api/[...path]/route.ts` only adapts Next.js requests and centralizes error responses.
-- `lib/imap.ts` owns safe connection, sync, read, and mutation operations; provider-specific mailbox semantics live in `mail-provider.ts` and `imap-folder.ts`.
+- `lib/imap.ts` owns safe connection, sync, read, and mutation operations. Pure batching/checkpoint policy lives in `imap-sync.ts`, retry classification in `imap-retry.ts`, and provider-specific mailbox semantics in `mail-provider.ts` and `imap-folder.ts`.
 - `lib/agent-runtime.ts` owns session lifecycle and tool translation. Workspace validation lives separately in `workspace.ts` and patching in `workspace-patch.ts`.
 - Client persistence helpers isolate browser selection, conversation, and Flow-selection state from page components.
 - Production screens stay data-driven and are shared with the static demo; `demo-site` may adapt transport and navigation but must not reimplement those screens.

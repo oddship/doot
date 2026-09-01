@@ -41,7 +41,7 @@ jobs:
           cache: npm
       - name: Install Moat and JavaScript dependencies
         run: |
-          go install github.com/oddship/moat@v0.6.2
+          go install github.com/oddship/moat@v0.6.3
           npm ci
       - name: Build documentation and frozen demo
         run: |

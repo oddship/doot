@@ -5,7 +5,6 @@
 @import "./styles/history.css";
 @import "./styles/settings.css";
 @import "./styles/overlays.css";
-@import "./styles/responsive.css";
 @import "./styles/inbox-pagination.css";
 @import "./styles/flows.css";
 @import "./styles/supporting-screens.css";
@@ -15,3 +14,4 @@
 @import "./styles/drafts.css";
 @import "./styles/activity.css";
 @import "./styles/providers.css";
+@import "./styles/responsive.css";

@@ -26,6 +26,7 @@
         }
       ],
       "text": "I found a conservative filing Flow and kept all financial and security mail out of archive suggestions.",
+      "rule": { "id": 12, "name": "Archive old build success notifications" },
       "status": { "status": "complete", "detail": "Doot finished · workspace saved" }
     }
   ]

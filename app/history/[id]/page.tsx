@@ -4,7 +4,8 @@ import { WorkspaceBoundary } from "@/components/generated-workspace";
 import { HistoryProposalAction } from "@/components/history-proposal-action";
 import { LocalTime } from "@/components/local-time";
 import { MarkdownContent } from "@/components/markdown-content";
-import { Badge, Card } from "@/components/ui";
+import { Badge, Card, cn } from "@/components/ui";
+import { historyEventLabel } from "@/lib/history-display";
 import { store } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,7 @@ export default async function HistoryDetail({ params }: { params: Promise<{ id: 
   const jobAccounts = data.events.filter(
     (event: any) => event.event_type === "sync_account_complete" || event.event_type === "sync_account_error",
   );
+  const hasSummary = isJob || !isAgent || Boolean(data.workspace);
   return (
     <main className="page">
       <header className="page-head">
@@ -55,17 +57,17 @@ export default async function HistoryDetail({ params }: { params: Promise<{ id: 
           </Badge>
         </div>
       </header>
-      <div className="history-grid">
+      <div className={cn("history-grid", !hasSummary && "history-grid-single")}>
         <Card className="history-detail">
           <h2>Event replay</h2>
           {data.events.map((event: any) => (
             <div className="event" key={event.id}>
               <div className="event-head">
-                <strong>{event.event_type.replaceAll("_", " ")}</strong>
+                <strong>{historyEventLabel(event.event_type)}</strong>
                 <LocalTime value={event.created_at} display="time" />
               </div>
               {event.content &&
-                (event.event_type === "assistant_message" ? (
+                (["assistant_message", "reasoning"].includes(event.event_type) ? (
                   <MarkdownContent>{event.content}</MarkdownContent>
                 ) : (
                   <div className="event-content">{event.content}</div>
@@ -79,67 +81,67 @@ export default async function HistoryDetail({ params }: { params: Promise<{ id: 
             </div>
           ))}
         </Card>
-        <Card className="history-detail">
-          <h2>{isJob ? "Account results" : isAgent ? "Generated workspace" : "Activity summary"}</h2>
-          {isJob ? (
-            jobAccounts.length ? (
-              <div className="job-account-list">
-                {jobAccounts.map((event: any) => (
-                  <div className="account-row" key={event.id}>
-                    <div>
-                      <strong>{event.metadata?.email || event.metadata?.account || "Account"}</strong>
-                      <div className="muted">{event.content}</div>
+        {hasSummary && (
+          <Card className="history-detail">
+            <h2>{isJob ? "Account results" : isAgent ? "Generated workspace" : "Activity summary"}</h2>
+            {isJob ? (
+              jobAccounts.length ? (
+                <div className="job-account-list">
+                  {jobAccounts.map((event: any) => (
+                    <div className="account-row" key={event.id}>
+                      <div>
+                        <strong>{event.metadata?.email || event.metadata?.account || "Account"}</strong>
+                        <div className="muted">{event.content}</div>
+                      </div>
+                      <Badge tone={event.event_type === "sync_account_complete" ? "good" : "error"}>
+                        {event.event_type === "sync_account_complete" ? "Done" : "Failed"}
+                      </Badge>
                     </div>
-                    <Badge tone={event.event_type === "sync_account_complete" ? "good" : "error"}>
-                      {event.event_type === "sync_account_complete" ? "Done" : "Failed"}
-                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">No account results were recorded.</p>
+              )
+            ) : isAgent && data.workspace ? (
+              <WorkspaceBoundary value={data.workspace.spec} />
+            ) : !isAgent ? (
+              <div className="activity-summary">
+                <div>
+                  <span>Type</span>
+                  <strong>{kindLabel[data.session.history_kind] || data.session.history_kind}</strong>
+                </div>
+                <div>
+                  <span>Status</span>
+                  <strong>{data.session.status === "ready" ? "Needs review" : data.session.status}</strong>
+                </div>
+                {metadata.flow_id && (
+                  <div>
+                    <span>Flow</span>
+                    <Link href={`/flows/${metadata.flow_id}`}>Open Flow {metadata.flow_id}</Link>
                   </div>
-                ))}
+                )}
+                {metadata.proposal_id && (
+                  <div>
+                    <span>Proposal</span>
+                    <strong>#{metadata.proposal_id}</strong>
+                  </div>
+                )}
+                {proposal && <HistoryProposalAction proposal={proposal} />}
+                {metadata.schedule_id && (
+                  <div>
+                    <span>Schedule</span>
+                    <strong>#{metadata.schedule_id}</strong>
+                  </div>
+                )}
+                <p className="muted">
+                  {data.session.status === "ready"
+                    ? "This activity prepared a review item. No mailbox change was applied automatically."
+                    : "This record is read-only and retained as part of the local activity ledger."}
+                </p>
               </div>
-            ) : (
-              <p className="muted">No account results were recorded.</p>
-            )
-          ) : isAgent && data.workspace ? (
-            <WorkspaceBoundary value={data.workspace.spec} />
-          ) : !isAgent ? (
-            <div className="activity-summary">
-              <div>
-                <span>Type</span>
-                <strong>{kindLabel[data.session.history_kind] || data.session.history_kind}</strong>
-              </div>
-              <div>
-                <span>Status</span>
-                <strong>{data.session.status === "ready" ? "Needs review" : data.session.status}</strong>
-              </div>
-              {metadata.flow_id && (
-                <div>
-                  <span>Flow</span>
-                  <Link href={`/flows/${metadata.flow_id}`}>Open Flow {metadata.flow_id}</Link>
-                </div>
-              )}
-              {metadata.proposal_id && (
-                <div>
-                  <span>Proposal</span>
-                  <strong>#{metadata.proposal_id}</strong>
-                </div>
-              )}
-              {proposal && <HistoryProposalAction proposal={proposal} />}
-              {metadata.schedule_id && (
-                <div>
-                  <span>Schedule</span>
-                  <strong>#{metadata.schedule_id}</strong>
-                </div>
-              )}
-              <p className="muted">
-                {data.session.status === "ready"
-                  ? "This activity prepared a review item. No mailbox change was applied automatically."
-                  : "This record is read-only and retained as part of the local activity ledger."}
-              </p>
-            </div>
-          ) : (
-            <p className="muted">This run did not produce a workspace.</p>
-          )}
-        </Card>
+            ) : null}
+          </Card>
+        )}
       </div>
     </main>
   );

@@ -12,6 +12,7 @@ import {
   Reply,
   Search,
   ShieldCheck,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -22,13 +23,15 @@ import { Badge, Button, Dialog, Input, Label, Skeleton, Tabs, Tooltip } from "@/
 import { saveAgentHandoff } from "@/lib/client-agent-handoff";
 import { apiJson, errorMessage } from "@/lib/client-api";
 import { navigateClient, replaceClientUrl } from "@/lib/client-navigation";
-import { loadSelectedIds, saveSelectedIds } from "@/lib/client-selection";
+import { saveSelectedSearch } from "@/lib/client-search-selection";
+import { loadSelectedIds, saveSelectedIds, selectedMessageId, selectedMessageRef } from "@/lib/client-selection";
 import { paginationItems } from "@/lib/pagination";
 
 type Mail = {
   account: string;
   account_email: string;
   uid: string;
+  folder: string;
   sender: string;
   subject: string;
   date: string;
@@ -43,6 +46,7 @@ export function InboxClient({
   initialAccount = "all",
   initialQuery = "",
   initialOpenUid,
+  initialOpenFolder,
   initialLimit = 25,
 }: {
   accounts: any[];
@@ -50,6 +54,7 @@ export function InboxClient({
   initialAccount?: string;
   initialQuery?: string;
   initialOpenUid?: string;
+  initialOpenFolder?: string;
   initialLimit?: number;
 }) {
   const toast = useToast();
@@ -86,11 +91,13 @@ export function InboxClient({
     openUid?: string,
     nextOffset = offset,
     nextLimit = pageSize,
+    openFolder?: string,
   ) => {
     const params = new URLSearchParams();
     if (nextAccount !== "all") params.set("account", nextAccount);
     if (nextQuery) params.set("query", nextQuery);
     if (openUid) params.set("open", openUid);
+    if (openUid && openFolder) params.set("folder", openFolder);
     const page = Math.floor(nextOffset / nextLimit) + 1;
     if (page > 1) params.set("page", String(page));
     if (nextLimit !== 25) params.set("limit", String(nextLimit));
@@ -102,19 +109,20 @@ export function InboxClient({
     nextQuery = query,
     nextLimit = pageSize,
     openUid?: string,
+    openFolder?: string,
   ): Promise<void> => {
     const value = await apiJson(
-      `/api/messages?account=${encodeURIComponent(nextAccount)}&query=${encodeURIComponent(nextQuery)}&offset=${nextOffset}&limit=${nextLimit}`,
+      `/api/messages?account=${encodeURIComponent(nextAccount)}&query=${encodeURIComponent(nextQuery)}&offset=${nextOffset}&limit=${nextLimit}${openFolder ? `&focus_folder=${encodeURIComponent(openFolder)}` : ""}`,
       {},
       "Inbox search failed",
     );
     if (nextOffset > 0 && nextOffset >= value.total) {
       const correctedOffset = Math.max(0, Math.floor(Math.max(0, value.total - 1) / nextLimit) * nextLimit);
-      return load(correctedOffset, nextAccount, nextQuery, nextLimit, openUid);
+      return load(correctedOffset, nextAccount, nextQuery, nextLimit, openUid, openFolder);
     }
     setData(value);
     setOffset(nextOffset);
-    updateUrl(nextAccount, nextQuery, openUid, nextOffset, nextLimit);
+    updateUrl(nextAccount, nextQuery, openUid, nextOffset, nextLimit, openFolder);
   };
   useEffect(() => {
     const socket = new WebSocket(`ws://${location.host}/ws`);
@@ -122,24 +130,28 @@ export function InboxClient({
       const value = JSON.parse(event.data);
       if (value.type !== "cache.refresh" || value.resource !== "messages") return;
       const affected = new Set(
-        (Array.isArray(value.items) ? value.items : []).map((item: any) => `${item.account}:${item.uid}`),
+        (Array.isArray(value.items) ? value.items : [])
+          .filter((item: any) => item.cache_hidden !== false)
+          .map((item: any) =>
+            selectedMessageId({ account: item.account, uid: String(item.uid), folder: item.source_folder }),
+          ),
       );
       if (affected.size) updateSelected((current) => current.filter((id) => !affected.has(id)));
-      const removedOpen = Boolean(open && affected.has(`${open.account}:${open.uid}`));
+      const removedOpen = Boolean(open && affected.has(selectedMessageId(open)));
       if (removedOpen) {
         setOpen(null);
         setDetail(null);
       }
-      void load(offset, account, query, pageSize, removedOpen ? undefined : open?.uid);
+      void load(offset, account, query, pageSize, removedOpen ? undefined : open?.uid, open?.folder);
     };
     return () => socket.close();
-  }, [account, query, offset, pageSize, open?.account, open?.uid]);
+  }, [account, query, offset, pageSize, open?.account, open?.folder, open?.uid]);
   const fetchMessage = async (mail: Mail, remote = false) => {
     setLoading(true);
     try {
       setDetail(
         await apiJson(
-          `/api/message?account=${encodeURIComponent(mail.account)}&uid=${encodeURIComponent(mail.uid)}${remote ? "&remote=1" : ""}`,
+          `/api/message?account=${encodeURIComponent(mail.account)}&uid=${encodeURIComponent(mail.uid)}&folder=${encodeURIComponent(mail.folder)}${remote ? "&remote=1" : ""}`,
           {},
           "Could not load message",
         ),
@@ -154,13 +166,16 @@ export function InboxClient({
     setOpen(mail);
     setDetail(null);
     setRenderMode("Message");
-    updateUrl(account, query, mail.uid);
+    updateUrl(account, query, mail.uid, offset, pageSize, mail.folder);
     await fetchMessage(mail);
   };
   useEffect(() => {
     if (!initialOpenUid) return;
     const match = initial.messages.find(
-      (mail: Mail) => mail.uid === initialOpenUid && (initialAccount === "all" || mail.account === initialAccount),
+      (mail: Mail) =>
+        mail.uid === initialOpenUid &&
+        (!initialOpenFolder || mail.folder === initialOpenFolder) &&
+        (initialAccount === "all" || mail.account === initialAccount),
     );
     if (match) void openMessage(match);
     else if (initialAccount !== "all")
@@ -168,7 +183,7 @@ export function InboxClient({
         setLoading(true);
         try {
           const value = await apiJson<any>(
-            `/api/message?account=${encodeURIComponent(initialAccount)}&uid=${encodeURIComponent(initialOpenUid)}`,
+            `/api/message?account=${encodeURIComponent(initialAccount)}&uid=${encodeURIComponent(initialOpenUid)}${initialOpenFolder ? `&folder=${encodeURIComponent(initialOpenFolder)}` : ""}`,
             {},
             "Could not load message",
           );
@@ -189,12 +204,12 @@ export function InboxClient({
       document.querySelector(".mail-item.active")?.scrollIntoView({ block: "center" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [open?.account, open?.uid]);
+  }, [open?.account, open?.folder, open?.uid]);
   const toggle = (mail: Mail) => {
-    const id = `${mail.account}:${mail.uid}`;
+    const id = selectedMessageId(mail);
     updateSelected((old) => (old.includes(id) ? old.filter((value) => value !== id) : [...old, id]));
   };
-  const openedId = open ? `${open.account}:${open.uid}` : "";
+  const openedId = open ? selectedMessageId(open) : "";
   const openedSelected = Boolean(openedId && selected.includes(openedId));
   const draftReply = () => {
     if (!open) return;
@@ -205,7 +220,16 @@ export function InboxClient({
     });
     navigateClient("/");
   };
-  const pageIds = (data.messages || []).map((mail: Mail) => `${mail.account}:${mail.uid}`);
+  const refineSearchWithDoot = () => {
+    const currentQuery = query.trim();
+    if (!currentQuery) return;
+    saveSelectedSearch({ account, query: currentQuery });
+    saveAgentHandoff({
+      prompt: `Refine this inbox search: ${currentQuery}`,
+    });
+    navigateClient("/");
+  };
+  const pageIds = (data.messages || []).map((mail: Mail) => selectedMessageId(mail));
   const pageSelected = pageIds.length > 0 && pageIds.every((id: string) => selected.includes(id));
   const togglePage = () => {
     updateSelected((old) => {
@@ -219,9 +243,9 @@ export function InboxClient({
     folder?: string,
     reason = "Manually selected in Inbox",
   ) => {
-    const items = messageIds.map((id) => {
-      const split = id.lastIndexOf(":");
-      return { account: id.slice(0, split), uid: id.slice(split + 1), ...(folder ? { folder } : {}) };
+    const items = messageIds.flatMap((id) => {
+      const reference = selectedMessageRef(id);
+      return reference ? [{ ...reference, source_folder: reference.folder, ...(folder ? { folder } : {}) }] : [];
     });
     try {
       const value = await apiJson(
@@ -245,7 +269,14 @@ export function InboxClient({
   const propose = (action: "archive" | "move" | "delete", folder?: string) =>
     createManualProposal(action, selected, folder);
   const prepareMove = async () => {
-    const selectedAccounts = [...new Set(selected.map((id) => id.slice(0, id.lastIndexOf(":"))))];
+    const selectedAccounts = [
+      ...new Set(
+        selected
+          .map(selectedMessageRef)
+          .filter(Boolean)
+          .map((reference) => reference!.account),
+      ),
+    ];
     if (selectedAccounts.length !== 1) {
       toast.info(
         "Choose one account",
@@ -282,16 +313,22 @@ export function InboxClient({
         "Could not apply proposal",
       );
       setProposal(null);
-      const appliedIds = new Set((result.results || []).map((item: any) => `${item.account}:${item.uid}`));
+      const appliedIds = new Set(
+        (result.results || [])
+          .filter((item: any) => item.cache_hidden !== false)
+          .map((item: any) =>
+            selectedMessageId({ account: item.account, uid: String(item.uid), folder: item.source_folder }),
+          ),
+      );
       updateSelected((current) => current.filter((id) => !appliedIds.has(id)));
-      const removedOpen = Boolean(open && appliedIds.has(`${open.account}:${open.uid}`));
+      const removedOpen = Boolean(open && appliedIds.has(selectedMessageId(open)));
       if (removedOpen) {
         setOpen(null);
         setDetail(null);
       }
-      await load(offset, account, query, pageSize, removedOpen ? undefined : open?.uid);
+      await load(offset, account, query, pageSize, removedOpen ? undefined : open?.uid, open?.folder);
       if (result.status === "applied")
-        toast.success("Mailbox updated", `${appliedIds.size} message(s) removed from Inbox.`);
+        toast.success("Mailbox updated", `${result.results?.length || 0} message(s) updated.`);
       else
         toast.info("Mailbox partially updated", `${appliedIds.size} succeeded; ${result.errors?.length || 0} failed.`);
     } catch (error) {
@@ -324,10 +361,11 @@ export function InboxClient({
         </div>
       </header>
       <div className="inbox-layout">
-        <section className="inbox-list">
-          <div className="toolbar">
+        <div className="inbox-toolbar">
+          <label className="inbox-toolbar-field">
+            <span>Account</span>
             <select
-              aria-label="Account"
+              className="inbox-account-select"
               value={account}
               onChange={(event) => {
                 const value = event.target.value;
@@ -343,33 +381,59 @@ export function InboxClient({
                 </option>
               ))}
             </select>
-            <Input
-              value={query}
-              placeholder="Search sender or subject"
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && load(0)}
-            />
-            <Button size="icon" variant="outline" tooltip="Search cached email headers" onClick={() => load(0)}>
-              <Search size={16} />
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!pageIds.length}
-              aria-label={pageSelected ? "Clear visible messages" : "Select all visible messages"}
-              tooltip={pageSelected ? "Unselect every visible email" : "Select every visible email"}
-              onClick={togglePage}
-            >
-              <CheckSquare size={15} />
-              {pageSelected ? "Clear page" : "Select page"}
-            </Button>
-          </div>
+          </label>
+          <form
+            className="inbox-toolbar-field"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void load(0);
+            }}
+          >
+            <span>Search cached mail</span>
+            <div className="inbox-search-control">
+              <Input
+                aria-label="Search cached email headers"
+                value={query}
+                placeholder="Sender, subject, or search query"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <Button className="inbox-search-submit" type="submit" size="sm" tooltip="Search cached email headers">
+                <Search size={15} />
+                Search
+              </Button>
+            </div>
+          </form>
+          <Button
+            className="inbox-select-page"
+            size="sm"
+            variant="outline"
+            disabled={!pageIds.length}
+            aria-label={pageSelected ? "Clear visible messages" : "Select all visible messages"}
+            tooltip={pageSelected ? "Unselect every visible email" : "Select every visible email"}
+            onClick={togglePage}
+          >
+            <CheckSquare size={15} />
+            {pageSelected ? "Clear page" : "Select page"}
+          </Button>
+        </div>
+        <section className="inbox-list">
+          {query.trim() && (
+            <div className="inbox-refine-search">
+              <span title={query.trim()}>
+                Current search: <strong>{query.trim()}</strong>
+              </span>
+              <Button size="sm" variant="outline" tooltip="Refine this filtered inbox" onClick={refineSearchWithDoot}>
+                <Sparkles size={14} />
+                Refine search with Doot
+              </Button>
+            </div>
+          )}
           <div className="mail-scroll">
             {data.messages.map((mail: Mail) => {
-              const id = `${mail.account}:${mail.uid}`;
+              const id = selectedMessageId(mail);
               return (
                 <div
-                  className={`mail-item ${open?.account === mail.account && open?.uid === mail.uid ? "active" : ""}`}
+                  className={`mail-item ${open?.account === mail.account && open?.folder === mail.folder && open?.uid === mail.uid ? "active" : ""}`}
                   key={id}
                   onClick={() => openMessage(mail)}
                 >
@@ -384,7 +448,7 @@ export function InboxClient({
                     <strong>{mail.sender}</strong>
                     <div className="subject">{mail.subject || "(no subject)"}</div>
                     <small>
-                      {mail.account_email}
+                      {mail.account_email} · {mail.folder}
                       {mail.body_fetched ? " · cached body" : ""}
                     </small>
                   </div>
@@ -467,6 +531,7 @@ export function InboxClient({
               <header className="email-header">
                 <div className="email-account-row">
                   <Badge>{open.account_email}</Badge>
+                  <Badge>{open.folder}</Badge>
                   <span>
                     <ShieldCheck size={13} /> Read without marking seen
                   </span>
@@ -526,7 +591,7 @@ export function InboxClient({
                         onClick={() =>
                           void createManualProposal(
                             "delete",
-                            [`${open.account}:${open.uid}`],
+                            [selectedMessageId(open)],
                             undefined,
                             `Delete opened message: ${open.subject || "(no subject)"}`,
                           )

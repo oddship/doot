@@ -54,6 +54,19 @@ describe("first-class email flows", () => {
     expect(route).toContain('["rule-propose", id]');
     expect(route).toContain('["apply", String(prepared.proposal.id)]');
     expect(client).toContain("confirm: true");
+    expect(client).toContain("closeDisabled={applying}");
+    expect(client).toContain("Updating the mailbox. Keep this dialog open");
+  });
+
+  it("keeps exact approval targets readable instead of truncating them", async () => {
+    const [client, css] = await Promise.all([
+      readFile("components/rules-client.tsx", "utf8"),
+      readFile("app/styles/flows.css", "utf8"),
+    ]);
+    expect(client).toContain("rule-approval-filter");
+    expect(client).toContain("rule-approval-account");
+    expect(css).toContain(".rule-definition.rule-approval-definition");
+    expect(css).toContain("overflow-wrap: anywhere");
   });
 
   it("defines activation as readiness rather than automatic execution", async () => {
@@ -73,9 +86,15 @@ describe("first-class email flows", () => {
   });
 
   it("directs Agent suggestions into the persisted flow review experience", async () => {
-    const runtime = await readFile("lib/agent-runtime.ts", "utf8");
+    const [runtime, workspace] = await Promise.all([
+      readFile("lib/agent-runtime.ts", "utf8"),
+      readFile("components/workspace-client.tsx", "utf8"),
+    ]);
     expect(runtime).toContain("flow_suggestion card whose action is open_flow");
     expect(runtime).toContain("Flows review, preview, and approve/run experience");
+    expect(workspace).toContain('label="Review flow"');
+    expect(workspace).toContain("artifact-review-link");
+    expect(workspace).toContain("Open this flow for review");
   });
 
   it("gives every persisted flow a canonical addressable page and redirects legacy rule URLs", async () => {

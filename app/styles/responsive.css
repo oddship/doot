@@ -1,16 +1,44 @@
 @media (max-width: 900px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: clip;
+  }
   .topbar {
-    padding: 0 14px;
+    height: auto;
+    min-height: 64px;
+    padding: 9px 14px 7px;
+    flex-wrap: wrap;
   }
   .brand {
-    margin-right: 12px;
+    margin-right: auto;
+  }
+  .top-actions {
+    margin-left: 8px;
+  }
+  .nav {
+    order: 3;
+    width: 100%;
+    height: 34px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar {
+    display: none;
   }
   .nav a {
+    flex: none;
     padding: 8px;
   }
   .workspace-shell {
     height: auto;
     display: block;
+    min-width: 0;
+  }
+  .workspace-shell > *,
+  .inbox-layout > * {
+    min-width: 0;
   }
   .agent-pane {
     height: 600px;
@@ -22,18 +50,32 @@
   }
   .inbox-layout {
     display: block;
+    width: 100%;
     height: auto;
+    min-width: 0;
   }
   .inbox-list {
     height: 580px;
+    min-width: 0;
     border-right: 0;
   }
   .reader-pane {
+    min-width: 0;
     min-height: 520px;
   }
   .history-grid,
-  .settings-grid {
+  .settings-grid,
+  .rules-layout,
+  .session-list {
     grid-template-columns: 1fr;
+  }
+  .rules-sidebar,
+  .history-grid > .history-detail:first-child {
+    position: static;
+    max-height: none;
+  }
+  .rule-definition {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .workspace-grid.cols-3,
   .workspace-grid.cols-4 {
@@ -43,31 +85,110 @@
     padding: 18px;
   }
 }
+
 @media (max-width: 600px) {
-  .brand span:last-child {
-    display: none;
+  .topbar {
+    gap: 3px;
+    padding-inline: 12px;
   }
+  .brand {
+    display: flex;
+  }
+  .brand span:last-child,
   .top-actions .sync-label {
     display: none;
+  }
+  .nav {
+    gap: 2px;
+  }
+  .nav::before {
+    display: none;
+  }
+  .nav a {
+    padding: 7px 4px;
+    font-size: 12px;
+  }
+  .page {
+    padding: 16px 14px;
+  }
+  .page-head {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .page-head > .action-list,
+  .page-head > div:last-child {
+    justify-content: flex-start;
   }
   .workspace-grid,
   .workspace-grid.cols-2,
   .workspace-grid.cols-3,
   .workspace-grid.cols-4,
+  .workspace-flow-grid,
   .form-grid,
   .memory-toolbar,
-  .folder-grid {
+  .folder-grid,
+  .sync-folder-options,
+  .session-list {
     grid-template-columns: 1fr;
+  }
+  .pane-head {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 14px;
+  }
+  .pane-title,
+  .pane-actions {
+    width: 100%;
+    min-width: 0;
+  }
+  .pane-actions {
+    justify-content: flex-start;
+  }
+  .selected-rule-context {
+    max-width: 100%;
+  }
+  .selected-rule-context .badge {
+    max-width: min(280px, calc(100vw - 88px));
+  }
+  .prompt-wrap {
+    padding-inline: 12px;
+  }
+  .prompt-wrap > div:first-child {
+    flex-wrap: wrap;
+  }
+  .prompt-wrap > div:first-child > .muted {
+    width: 100%;
   }
   .canvas-pane {
     padding: 18px;
   }
-  .nav a {
-    font-size: 12px;
-    padding: 7px;
+  .inbox-refine-search {
+    align-items: stretch;
+    flex-direction: column;
   }
-  .topbar {
-    gap: 3px;
+  .inbox-refine-search > span {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .mail-item {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+  .mail-item > div {
+    min-width: 0;
+  }
+  .mail-item > small {
+    grid-column: 2;
+    padding-left: 0;
+  }
+  .pagination {
+    align-items: center;
+  }
+  .renderer-toolbar,
+  .renderer-actions,
+  .email-account-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
   .email-header,
   .email-body-surface {
@@ -85,10 +206,25 @@
   .attachment-section {
     padding: 18px;
   }
-  .memory-row-head {
-    align-items: flex-start;
-    flex-direction: column;
+  .rule-definition,
+  .rule-definition.rule-approval-definition {
+    grid-template-columns: 1fr;
   }
+  .dialog {
+    width: calc(100vw - 20px);
+    padding: 16px;
+  }
+  .settings-grid > aside {
+    position: static;
+  }
+  .settings-grid > aside .card {
+    display: flex;
+    overflow-x: auto;
+  }
+  .settings-grid > aside .session-link {
+    flex: none;
+  }
+  .memory-row-head,
   .folder-toolbar {
     align-items: flex-start;
     flex-direction: column;

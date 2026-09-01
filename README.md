@@ -16,7 +16,7 @@ Doot is an agent-first email workspace that investigates a local IMAP cache, bui
 
 ## What it does
 
-- Connects IMAP accounts, discovers provider folders, and incrementally syncs message headers.
+- Connects IMAP accounts, discovers provider folders, and incrementally syncs message headers using an Inbox-only, provider-recommended, or custom folder scope.
 - Searches the complete cache with SQLite FTS5 and fetches bodies only when opened via `BODY.PEEK[]`.
 - Gives the agent paginated search, aggregation, selected-message, proposal, Flow, artifact, and bounded memory tools.
 - Prepares structured local drafts with Doot, then saves them to the account's advertised IMAP Drafts folder only after explicit confirmation.

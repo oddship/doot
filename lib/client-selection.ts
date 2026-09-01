@@ -1,9 +1,20 @@
-export type SelectedMessageRef = { account: string; uid: string };
+export type SelectedMessageRef = { account: string; uid: string; folder?: string };
 
 const STORAGE_KEY = "email-agent:selected-messages:v1";
 export const SELECTION_EVENT = "email-agent-selection";
 
-function selectionRef(id: string): SelectedMessageRef | null {
+const SEPARATOR = "\u001f";
+
+export function selectedMessageId(reference: SelectedMessageRef) {
+  return [reference.account, reference.folder || "", reference.uid].join(SEPARATOR);
+}
+
+export function selectedMessageRef(id: string): SelectedMessageRef | null {
+  if (id.includes(SEPARATOR)) {
+    const [account, folder, uid, ...extra] = id.split(SEPARATOR);
+    if (!extra.length && account && /^\d+$/.test(uid)) return { account, uid, ...(folder ? { folder } : {}) };
+    return null;
+  }
   const split = id.lastIndexOf(":");
   const account = id.slice(0, split),
     uid = id.slice(split + 1);
@@ -17,7 +28,7 @@ export function loadSelectedIds() {
     return Array.isArray(values)
       ? [
           ...new Set(
-            values.filter((value): value is string => typeof value === "string" && selectionRef(value) !== null),
+            values.filter((value): value is string => typeof value === "string" && selectedMessageRef(value) !== null),
           ),
         ].slice(0, 100)
       : [];
@@ -28,13 +39,13 @@ export function loadSelectedIds() {
 
 export function saveSelectedIds(values: string[]) {
   if (typeof window === "undefined") return;
-  const safe = [...new Set(values)].filter((value) => selectionRef(value) !== null).slice(0, 100);
+  const safe = [...new Set(values)].filter((value) => selectedMessageRef(value) !== null).slice(0, 100);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
   window.dispatchEvent(new CustomEvent(SELECTION_EVENT, { detail: safe }));
 }
 
 export function loadSelectedRefs() {
   return loadSelectedIds()
-    .map(selectionRef)
+    .map(selectedMessageRef)
     .filter((value): value is SelectedMessageRef => value !== null);
 }
