@@ -35,7 +35,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.84.2",
+    "@earendil-works/pi-coding-agent": "0.84.4",
     "better-sqlite3": "13.0.3",
     "imapflow": "1.7.1",
     "lucide-react": "1.33.0",
