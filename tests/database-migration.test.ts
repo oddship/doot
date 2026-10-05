@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import LegacyDatabase from "better-sqlite3";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 const directory = mkdtempSync(path.join(tmpdir(), "doot-folder-migration-"));
 const databasePath = path.join(directory, "cache.sqlite3");
@@ -38,6 +38,66 @@ afterAll(() => {
 });
 
 describe("folder-scoped SQLite migration", () => {
+  it("keeps the canonical view readable from another connection throughout initialization", async () => {
+    const reader = new LegacyDatabase(databasePath, { readonly: true });
+    const globalDatabase = globalThis as typeof globalThis & { __emailAgentDatabase?: LegacyDatabase.Database };
+    const exec = LegacyDatabase.prototype.exec;
+    let observed = false;
+    let reopened: typeof database | undefined;
+    const spy = vi.spyOn(LegacyDatabase.prototype, "exec").mockImplementation(function (
+      this: LegacyDatabase.Database,
+      sql: string,
+    ) {
+      const result = exec.call(this, sql);
+      if (sql.includes("DROP VIEW IF EXISTS canonical_messages")) {
+        observed = true;
+        expect(this.inTransaction).toBe(true);
+        expect(reader.prepare("SELECT COUNT(*) count FROM canonical_messages").get()).toEqual({ count: 1 });
+      }
+      return result;
+    });
+    try {
+      delete globalDatabase.__emailAgentDatabase;
+      vi.resetModules();
+      reopened = await import("@/lib/database");
+      expect(observed).toBe(true);
+      expect(reopened.queryMessages({ query: "migration" }).total).toBe(1);
+    } finally {
+      spy.mockRestore();
+      reopened?.db.close();
+      reader.close();
+      globalDatabase.__emailAgentDatabase = database.db;
+    }
+  });
+
+  it("rolls back the view drop and releases the connection if initialization fails", async () => {
+    const reader = new LegacyDatabase(databasePath, { readonly: true });
+    const globalDatabase = globalThis as typeof globalThis & { __emailAgentDatabase?: LegacyDatabase.Database };
+    const exec = LegacyDatabase.prototype.exec;
+    let failedConnection: LegacyDatabase.Database | undefined;
+    const spy = vi.spyOn(LegacyDatabase.prototype, "exec").mockImplementation(function (
+      this: LegacyDatabase.Database,
+      sql: string,
+    ) {
+      if (sql.includes("CREATE VIEW canonical_messages")) {
+        failedConnection = this;
+        throw new Error("Injected schema failure");
+      }
+      return exec.call(this, sql);
+    });
+    try {
+      delete globalDatabase.__emailAgentDatabase;
+      vi.resetModules();
+      await expect(import("@/lib/database")).rejects.toThrow("Injected schema failure");
+      expect(failedConnection?.open).toBe(false);
+      expect(reader.prepare("SELECT COUNT(*) count FROM canonical_messages").get()).toEqual({ count: 1 });
+      expect(database.queryMessages({ query: "migration" }).total).toBe(1);
+    } finally {
+      spy.mockRestore();
+      reader.close();
+      globalDatabase.__emailAgentDatabase = database.db;
+    }
+  });
   it("preserves cached bodies and rebuilds folder-aware keys and FTS", () => {
     const messageKey = (database.db.prepare("PRAGMA table_info(messages)").all() as any[])
       .filter((row) => row.pk)
@@ -59,6 +119,22 @@ describe("folder-scoped SQLite migration", () => {
       uid_validity: "7",
     });
     expect(database.queryMessages({ query: "migration" }).total).toBe(1);
+  });
+
+  it("atomically rejects duplicate agent Flow suggestions and prevents creation from editing IDs", async () => {
+    vi.resetModules();
+    const { saveAgentSuggestedRule } = await import("@/lib/rules");
+    const input = { name: "Puzzle notifications", account: "all", query: "subject:puzzle", action: "archive" };
+    const created = saveAgentSuggestedRule(input);
+    expect(created).toMatchObject({ enabled: false, status: "suggested", source: "agent" });
+    expect(() => saveAgentSuggestedRule({ ...input, action: "delete" })).toThrow(`Flow ${created.id} already exists`);
+    expect(() => saveAgentSuggestedRule({ ...input, id: created.id })).toThrow("authorized Flow update");
+    expect(database.db.prepare("SELECT COUNT(*) count FROM email_rules WHERE query=?").get(input.query)).toEqual({
+      count: 1,
+    });
+    expect(database.db.prepare("SELECT action FROM email_rules WHERE id=?").get(created.id)).toEqual({
+      action: "archive",
+    });
   });
 
   it("canonicalizes overlapping provider messages while retaining folder rows", () => {

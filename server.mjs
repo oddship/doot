@@ -28,6 +28,7 @@ try {
 const app = next({ dev, hostname, port });
 await app.prepare();
 const handle = app.getRequestHandler();
+const handleUpgrade = app.getUpgradeHandler();
 const server = http.createServer((request, response) => handle(request, response));
 const sockets = new Set();
 const schedulerToken = randomUUID();
@@ -45,6 +46,10 @@ wss.on("connection", (socket) => {
   socket.on("close", () => sockets.delete(socket));
 });
 server.on("upgrade", (request, socket, head) => {
+  const pathname = new URL(request.url || "/", `http://${hostname}:${port}`).pathname;
+  if (dev && (pathname === "/_next/hmr" || pathname === "/_next/webpack-hmr")) {
+    return void handleUpgrade(request, socket, head);
+  }
   if (request.url !== "/ws") return socket.destroy();
   wss.handleUpgrade(request, socket, head, (client) => wss.emit("connection", client, request));
 });

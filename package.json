@@ -22,6 +22,8 @@
     "start": "NODE_ENV=production node server.mjs",
     "test": "vitest run",
     "test:ui": "node scripts/ui-audit.mjs",
+    "bench:imap-reads": "node scripts/benchmark-body-reads.mjs",
+    "bench:queries": "DOOT_QUERY_BENCHMARK=1 vitest run tests/message-query-performance.test.ts --disableConsoleIntercept",
     "demo:build": "node scripts/build-static-demo.mjs",
     "demo:serve": "node scripts/serve-static-demo.mjs",
     "demo:screenshot": "node scripts/capture-demo.mjs",
@@ -35,11 +37,11 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.84.2",
+    "@earendil-works/pi-coding-agent": "1.0.3",
     "better-sqlite3": "13.0.3",
     "imapflow": "1.7.1",
     "lucide-react": "1.33.0",
-    "next": "16.3.1",
+    "next": "16.3.8",
     "postal-mime": "3.0.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",

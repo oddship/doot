@@ -3,6 +3,7 @@ import PostalMime from "postal-mime";
 import { accountByName, dateTimestamp, db, json, now, type StoredAccount } from "@/lib/database";
 import { buildDraftMime } from "@/lib/draft-mime";
 import type { LocalDraftContent } from "@/lib/drafts";
+import { type BodyFetchMetrics, fetchBodyBatches, MAX_MESSAGE_BYTES } from "@/lib/imap-body-read";
 import { type FolderMutation, isProtectedMailbox, validateMailboxPath, validateMailboxTarget } from "@/lib/imap-folder";
 import { withImapRetry } from "@/lib/imap-retry";
 import {
@@ -16,8 +17,6 @@ import {
 } from "@/lib/imap-sync";
 import { providerForConnection, providerForHost } from "@/lib/mail-provider";
 import { planMailboxSync } from "@/lib/sync-selection";
-
-const MAX_MESSAGE_BYTES = 25 * 1024 * 1024;
 
 function clientFor(account: StoredAccount) {
   const client = new ImapFlow({
@@ -46,17 +45,23 @@ async function withMailbox<T>(
   folder: string,
   readOnly: boolean,
   callback: (client: ImapFlow) => Promise<T>,
+  metrics?: ReadMailboxMetrics,
 ) {
   const client = clientFor(account);
-  await client.connect();
-  const lock = await client.getMailboxLock(folder, {
-    readOnly,
-    description: readOnly ? "Doot read" : "Confirmed mailbox action",
-  });
+  let lock: Awaited<ReturnType<ImapFlow["getMailboxLock"]>> | undefined;
   try {
+    const connectStarted = performance.now();
+    await client.connect();
+    if (metrics) metrics.connect_ms += performance.now() - connectStarted;
+    const mailboxStarted = performance.now();
+    lock = await client.getMailboxLock(folder, {
+      readOnly,
+      description: readOnly ? "Doot read" : "Confirmed mailbox action",
+    });
+    if (metrics) metrics.mailbox_ms += performance.now() - mailboxStarted;
     return await callback(client);
   } finally {
-    lock.release();
+    lock?.release();
     try {
       await client.logout();
     } catch {
@@ -158,21 +163,30 @@ async function connectReadSession(session: ReadSession, account: StoredAccount) 
   }
 }
 
+type ReadMailboxMetrics = { queue_ms: number; connect_ms: number; mailbox_ms: number };
+
 async function withReusableReadMailbox<T>(
   account: StoredAccount,
   folder: string,
   callback: (client: ImapFlow) => Promise<T>,
+  metrics?: ReadMailboxMetrics,
 ) {
   const session = readSessionFor(account, folder);
-  if (!session) return withMailbox(account, folder, true, callback);
+  if (!session) return withMailbox(account, folder, true, callback, metrics);
   if (session.idleTimer) clearTimeout(session.idleTimer);
   session.pending += 1;
+  const queuedAt = performance.now();
   const operation = session.queue.then(async () => {
+    if (metrics) metrics.queue_ms += performance.now() - queuedAt;
+    const connectStarted = performance.now();
     const client = await connectReadSession(session, account);
+    if (metrics) metrics.connect_ms += performance.now() - connectStarted;
     let lock: Awaited<ReturnType<ImapFlow["getMailboxLock"]>> | undefined;
     let failed = false;
     try {
+      const mailboxStarted = performance.now();
       lock = await client.getMailboxLock(folder, { readOnly: true, description: "Doot reusable read" });
+      if (metrics) metrics.mailbox_ms += performance.now() - mailboxStarted;
       return await callback(client);
     } catch (error) {
       failed = true;
@@ -765,50 +779,218 @@ export async function syncAccount(input: {
   }
 }
 
+export type MessageBodyRef = { account: string; folder: string; uid: string };
+export type BodyReadMetrics = BodyFetchMetrics &
+  ReadMailboxMetrics & {
+    requested: number;
+    cache_hits: number;
+    coalesced: number;
+    network_messages: number;
+    cache_ms: number;
+    parse_ms: number;
+    total_ms: number;
+  };
+const pendingBodyReads = new Map<string, Promise<void>>();
+const bodyKey = (ref: MessageBodyRef) => JSON.stringify([ref.account, ref.folder, ref.uid]);
+
+export async function readMessages(refs: MessageBodyRef[]) {
+  if (!Array.isArray(refs) || refs.length > 50) throw new Error("Read at most 50 exact message references");
+  const started = performance.now();
+  const metrics: BodyReadMetrics = {
+    requested: refs.length,
+    cache_hits: 0,
+    coalesced: 0,
+    network_messages: 0,
+    metadata_fetches: 0,
+    source_fetches: 0,
+    source_bytes: 0,
+    metadata_ms: 0,
+    source_ms: 0,
+    queue_ms: 0,
+    connect_ms: 0,
+    mailbox_ms: 0,
+    cache_ms: 0,
+    parse_ms: 0,
+    total_ms: 0,
+  };
+  const lookupStarted = performance.now();
+  const find = db.prepare("SELECT * FROM messages WHERE account=? AND folder=? AND uid=? AND present=1");
+  const lookup = db.prepare("SELECT body_fetched FROM messages WHERE account=? AND folder=? AND uid=? AND present=1");
+  const cached = new Map<string, boolean>();
+  const accounts = new Map<string, StoredAccount>();
+  const unique = new Map<string, MessageBodyRef>();
+  // Validate the entire input against the cache before starting any IMAP work.
+  for (const ref of refs) {
+    if (
+      !ref?.account ||
+      !ref.folder ||
+      !/^\d+$/.test(String(ref.uid)) ||
+      Number(ref.uid) < 1 ||
+      Number(ref.uid) > 0xffffffff
+    )
+      throw new Error("Every body read requires an exact account, folder, and valid UID");
+    if (!accounts.has(ref.account)) {
+      const account = accountByName(ref.account);
+      if (!account) throw new Error("unknown account");
+      accounts.set(ref.account, account);
+    }
+    const key = bodyKey(ref);
+    if (unique.has(key)) continue;
+    const row = lookup.get(ref.account, ref.folder, ref.uid) as any;
+    if (!row) throw new Error("message is no longer available in the synced mailbox cache");
+    unique.set(key, ref);
+    cached.set(key, Boolean(row.body_fetched));
+  }
+  const groups = new Map<string, MessageBodyRef[]>();
+  const waits: Promise<void>[] = [];
+  for (const [key, ref] of unique) {
+    if (cached.get(key)) {
+      metrics.cache_hits++;
+      continue;
+    }
+    const pending = pendingBodyReads.get(key);
+    if (pending) {
+      metrics.coalesced++;
+      waits.push(pending);
+      continue;
+    }
+    const groupKey = JSON.stringify([ref.account, ref.folder]);
+    const group = groups.get(groupKey) || [];
+    group.push(ref);
+    groups.set(groupKey, group);
+  }
+  metrics.cache_ms += performance.now() - lookupStarted;
+  const update = db.prepare(`UPDATE messages SET body_text=?,body_html=?,attachments_json=?,body_fetched=1,fetched_at=?
+    WHERE account=? AND folder=? AND uid=? AND present=1`);
+  const jobs: Array<() => Promise<void>> = [];
+  for (const group of groups.values()) {
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    const completion = new Promise<void>((ok, fail) => {
+      resolve = ok;
+      reject = fail;
+    });
+    waits.push(completion);
+    for (const ref of group) pendingBodyReads.set(bodyKey(ref), completion);
+    jobs.push(async () => {
+      try {
+        const { account, folder } = group[0];
+        await withReusableReadMailbox(
+          accounts.get(account)!,
+          folder,
+          async (client) => {
+            const assertUidValidity = () => {
+              const checkpoint = db
+                .prepare("SELECT uid_validity FROM sync_state WHERE account=? AND folder=?")
+                .get(account, folder) as any;
+              if (
+                checkpoint?.uid_validity &&
+                client.mailbox &&
+                String(client.mailbox.uidValidity) !== String(checkpoint.uid_validity)
+              )
+                throw new Error("Mailbox UID validity changed; sync before reading bodies");
+            };
+            assertUidValidity();
+            const missing = group.filter((ref) => {
+              const row = lookup.get(ref.account, ref.folder, ref.uid) as any;
+              if (!row) throw new Error("message is no longer available in the synced mailbox cache");
+              if (row.body_fetched) {
+                metrics.cache_hits++;
+                return false;
+              }
+              return true;
+            });
+            metrics.network_messages += missing.length;
+            await fetchBodyBatches(
+              client,
+              missing.map((ref) => Number(ref.uid)),
+              async (messages) => {
+                const parseStarted = performance.now();
+                const parsedRows: Array<{
+                  uid: string;
+                  text: string;
+                  html: string;
+                  attachments: Array<{ filename: string; content_type: string; size: number }>;
+                }> = [];
+                for (const message of messages) {
+                  const parsed = await PostalMime.parse(message.source!, {
+                    maxNestingDepth: 64,
+                    maxHeadersSize: 2 * 1024 * 1024,
+                    maxRfc822NestingDepth: 5,
+                  });
+                  const attachments = (parsed.attachments || []).map((attachment) => ({
+                    filename: attachment.filename || "attachment",
+                    content_type: attachment.mimeType || "application/octet-stream",
+                    size:
+                      attachment.content instanceof ArrayBuffer
+                        ? attachment.content.byteLength
+                        : typeof attachment.content === "string"
+                          ? Buffer.byteLength(attachment.content)
+                          : 0,
+                  }));
+                  parsedRows.push({
+                    uid: String(message.uid),
+                    text: parsed.text || "",
+                    html: parsed.html || "",
+                    attachments,
+                  });
+                }
+                metrics.parse_ms += performance.now() - parseStarted;
+                const cacheStarted = performance.now();
+                db.transaction(() => {
+                  assertUidValidity();
+                  for (const row of parsedRows) {
+                    if (
+                      !update.run(row.text, row.html, JSON.stringify(row.attachments), now(), account, folder, row.uid)
+                        .changes
+                    )
+                      throw new Error("message is no longer available in the synced mailbox cache");
+                  }
+                })();
+                metrics.cache_ms += performance.now() - cacheStarted;
+              },
+              metrics,
+            );
+          },
+          metrics,
+        );
+        resolve();
+      } catch (error) {
+        reject(error);
+      } finally {
+        for (const ref of group)
+          if (pendingBodyReads.get(bodyKey(ref)) === completion) pendingBodyReads.delete(bodyKey(ref));
+      }
+    });
+  }
+  // Install all per-message promises before running work, so overlapping readers
+  // share the same fetch. Limit concurrent account/folder groups to four.
+  const allReads = Promise.all(waits);
+  const worker = async () => {
+    while (jobs.length) await jobs.shift()!();
+  };
+  await Promise.all([allReads, ...Array.from({ length: Math.min(4, jobs.length) }, worker)]);
+  const finishStarted = performance.now();
+  const messages = refs.map((ref) => {
+    const existing = find.get(ref.account, ref.folder, ref.uid) as any;
+    if (!existing?.body_fetched) throw new Error("message is no longer available in the synced mailbox cache");
+    const value = { ...existing, attachments: json(existing.attachments_json, []) };
+    delete value.attachments_json;
+    return value;
+  });
+  metrics.cache_ms += performance.now() - finishStarted;
+  metrics.total_ms = performance.now() - started;
+  return { messages, metrics };
+}
+
 export async function readMessage(accountName: string, uid: string, folder?: string) {
-  const account = accountByName(accountName);
-  if (!account) throw new Error("unknown account");
-  let existing = db
-    .prepare(`SELECT * FROM messages WHERE account=? AND uid=? AND present=1
-      ${folder ? "AND folder=?" : ""} ORDER BY CASE WHEN folder='INBOX' THEN 0 ELSE 1 END,date_ts DESC LIMIT 1`)
+  const existing = db
+    .prepare(`SELECT folder FROM messages WHERE account=? AND uid=? AND present=1
+    ${folder ? "AND folder=?" : ""} ORDER BY CASE WHEN folder='INBOX' THEN 0 ELSE 1 END,date_ts DESC LIMIT 1`)
     .get(accountName, uid, ...(folder ? [folder] : [])) as any;
   if (!existing) throw new Error("message is no longer available in the synced mailbox cache");
-  if (!existing.body_fetched) {
-    const parsed = await withReusableReadMailbox(account, existing.folder || "INBOX", async (client) => {
-      const metadata = await client.fetchOne(uid, { uid: true, size: true }, { uid: true });
-      if (!metadata) throw new Error("message not found upstream");
-      if ((metadata.size || 0) > MAX_MESSAGE_BYTES) throw new Error("message exceeds the 25 MB safe reading limit");
-      // ImapFlow maps source:true to BODY.PEEK[], so this read does not add \Seen.
-      const message = await client.fetchOne(uid, { uid: true, source: true }, { uid: true });
-      if (message === false || !message.source) throw new Error("message source was not returned upstream");
-      return PostalMime.parse(message.source, {
-        maxNestingDepth: 64,
-        maxHeadersSize: 2 * 1024 * 1024,
-        maxRfc822NestingDepth: 5,
-      });
-    });
-    const attachments = (parsed.attachments || []).map((attachment) => ({
-      filename: attachment.filename || "attachment",
-      content_type: attachment.mimeType || "application/octet-stream",
-      size:
-        attachment.content instanceof ArrayBuffer
-          ? attachment.content.byteLength
-          : typeof attachment.content === "string"
-            ? Buffer.byteLength(attachment.content)
-            : 0,
-    }));
-    db.prepare(
-      `UPDATE messages SET body_text=?,body_html=?,attachments_json=?,body_fetched=1,fetched_at=?
-      WHERE account=? AND folder=? AND uid=?`,
-    ).run(parsed.text || "", parsed.html || "", JSON.stringify(attachments), now(), accountName, existing.folder, uid);
-    existing = db
-      .prepare("SELECT * FROM messages WHERE account=? AND folder=? AND uid=? AND present=1")
-      .get(accountName, existing.folder, uid) as any;
-    if (!existing) throw new Error("message is no longer available in the synced mailbox cache");
-  }
-  const value = { ...existing, attachments: JSON.parse(existing.attachments_json || "[]") };
-  delete value.attachments_json;
-  return value;
+  const result = await readMessages([{ account: accountName, folder: existing.folder, uid }]);
+  return { ...result.messages[0], read_metrics: result.metrics };
 }
 
 async function specialMailbox(client: ImapFlow, specialUse: string, fallback: string) {

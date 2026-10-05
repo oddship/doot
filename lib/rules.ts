@@ -101,6 +101,26 @@ export function saveRule(value: any) {
   return getRule(Number(info.lastInsertRowid));
 }
 
+export function saveAgentSuggestedRule(value: any) {
+  if (value?.id) throw new Error("Use the authorized Flow update tool to edit an existing definition");
+  return db
+    .transaction(() => {
+      const account = String(value?.account || "all");
+      const query = String(value?.query || "")
+        .trim()
+        .slice(0, 200);
+      const existing = db
+        .prepare("SELECT id FROM email_rules WHERE account=? AND query=? ORDER BY id LIMIT 1")
+        .get(account, query) as { id: number } | undefined;
+      if (existing)
+        throw new Error(
+          `Flow ${existing.id} already exists for this account/query. Inspect and reuse it, or update it if selected/conversation-created. Do not create a replacement when an edit is denied.`,
+        );
+      return saveRule({ ...value, source: "agent", status: "suggested", enabled: false });
+    })
+    .immediate();
+}
+
 export function deleteRule(id: number) {
   return db.prepare("DELETE FROM email_rules WHERE id=?").run(id).changes > 0;
 }

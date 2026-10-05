@@ -15,17 +15,20 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmailFrame } from "@/components/email-frame";
 import { useToast } from "@/components/feedback";
 import { LocalTime } from "@/components/local-time";
 import { Badge, Button, Dialog, Input, Label, Skeleton, Tabs, Tooltip } from "@/components/ui";
 import { saveAgentHandoff } from "@/lib/client-agent-handoff";
 import { apiJson, errorMessage } from "@/lib/client-api";
+import { LatestRequest } from "@/lib/client-latest-request";
+import { reuseMailRows } from "@/lib/client-mail-rows";
 import { navigateClient, replaceClientUrl } from "@/lib/client-navigation";
 import { saveSelectedSearch } from "@/lib/client-search-selection";
 import { loadSelectedIds, saveSelectedIds, selectedMessageId, selectedMessageRef } from "@/lib/client-selection";
 import { paginationItems } from "@/lib/pagination";
+import { useCacheEvents } from "@/lib/use-cache-events";
 
 type Mail = {
   account: string;
@@ -38,6 +41,41 @@ type Mail = {
   body_fetched?: number;
   unread?: number;
 };
+const MailRow = memo(function MailRow({
+  mail,
+  active,
+  selected,
+  onOpen,
+  onToggle,
+}: {
+  mail: Mail;
+  active: boolean;
+  selected: boolean;
+  onOpen: (mail: Mail) => void;
+  onToggle: (mail: Mail) => void;
+}) {
+  return (
+    <div className={`mail-item ${active ? "active" : ""}`} onClick={() => onOpen(mail)}>
+      <input
+        type="checkbox"
+        aria-label={`Select ${mail.subject}`}
+        checked={selected}
+        onChange={() => onToggle(mail)}
+        onClick={(event) => event.stopPropagation()}
+      />
+      <div>
+        <strong>{mail.sender}</strong>
+        <div className="subject">{mail.subject || "(no subject)"}</div>
+        <small>
+          {mail.account_email} · {mail.folder}
+          {mail.body_fetched ? " · cached body" : ""}
+        </small>
+      </div>
+      <small>{mail.date ? <LocalTime value={mail.date} /> : ""}</small>
+    </div>
+  );
+});
+
 type MoveFolder = { path: string; flags?: string[]; rule_target_allowed?: boolean };
 type MoveChoice = { account: string; provider: "gmail" | "imap"; folders: MoveFolder[]; target: string };
 export function InboxClient({
@@ -60,6 +98,20 @@ export function InboxClient({
   const toast = useToast();
   const [account, setAccount] = useState(initialAccount);
   const [query, setQuery] = useState(initialQuery);
+  const [activeQuery, setActiveQuery] = useState(initialQuery);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searches = useRef(new LatestRequest());
+  const bodies = useRef(new LatestRequest());
+  const searchBusy = useRef(false);
+  const refreshPending = useRef(false);
+  const reader = useRef<Mail | null>(null);
+  useEffect(
+    () => () => {
+      searches.current.cancel();
+      bodies.current.cancel();
+    },
+    [],
+  );
   const [offset, setOffset] = useState(initial.offset || 0);
   const [pageSize, setPageSize] = useState(initialLimit);
   const [data, setData] = useState(initial);
@@ -78,97 +130,128 @@ export function InboxClient({
     window.addEventListener("storage", refresh);
     return () => window.removeEventListener("storage", refresh);
   }, []);
-  const updateSelected = (update: (current: string[]) => string[]) => {
+  const updateSelected = useCallback((update: (current: string[]) => string[]) => {
     setSelected((current) => {
       const next = update(current);
       saveSelectedIds(next);
       return loadSelectedIds();
     });
-  };
-  const updateUrl = (
-    nextAccount: string,
-    nextQuery: string,
-    openUid?: string,
-    nextOffset = offset,
-    nextLimit = pageSize,
-    openFolder?: string,
-  ) => {
-    const params = new URLSearchParams();
-    if (nextAccount !== "all") params.set("account", nextAccount);
-    if (nextQuery) params.set("query", nextQuery);
-    if (openUid) params.set("open", openUid);
-    if (openUid && openFolder) params.set("folder", openFolder);
-    const page = Math.floor(nextOffset / nextLimit) + 1;
-    if (page > 1) params.set("page", String(page));
-    if (nextLimit !== 25) params.set("limit", String(nextLimit));
-    replaceClientUrl(`/inbox${params.size ? `?${params}` : ""}`);
-  };
+  }, []);
+  const updateUrl = useCallback(
+    (
+      nextAccount: string,
+      nextQuery: string,
+      openUid?: string,
+      nextOffset = offset,
+      nextLimit = pageSize,
+      openFolder?: string,
+    ) => {
+      const params = new URLSearchParams();
+      if (nextAccount !== "all") params.set("account", nextAccount);
+      if (nextQuery) params.set("query", nextQuery);
+      if (openUid) params.set("open", openUid);
+      if (openUid && openFolder) params.set("folder", openFolder);
+      const page = Math.floor(nextOffset / nextLimit) + 1;
+      if (page > 1) params.set("page", String(page));
+      if (nextLimit !== 25) params.set("limit", String(nextLimit));
+      replaceClientUrl(`/inbox${params.size ? `?${params}` : ""}`);
+    },
+    [offset, pageSize],
+  );
   const load = async (
     nextOffset = offset,
     nextAccount = account,
-    nextQuery = query,
+    nextQuery = activeQuery,
     nextLimit = pageSize,
     openUid?: string,
     openFolder?: string,
   ): Promise<void> => {
-    const value = await apiJson(
-      `/api/messages?account=${encodeURIComponent(nextAccount)}&query=${encodeURIComponent(nextQuery)}&offset=${nextOffset}&limit=${nextLimit}${openFolder ? `&focus_folder=${encodeURIComponent(openFolder)}` : ""}`,
-      {},
-      "Inbox search failed",
-    );
-    if (nextOffset > 0 && nextOffset >= value.total) {
-      const correctedOffset = Math.max(0, Math.floor(Math.max(0, value.total - 1) / nextLimit) * nextLimit);
-      return load(correctedOffset, nextAccount, nextQuery, nextLimit, openUid, openFolder);
-    }
-    setData(value);
-    setOffset(nextOffset);
-    updateUrl(nextAccount, nextQuery, openUid, nextOffset, nextLimit, openFolder);
-  };
-  useEffect(() => {
-    const socket = new WebSocket(`ws://${location.host}/ws`);
-    socket.onmessage = (event) => {
-      const value = JSON.parse(event.data);
-      if (value.type !== "cache.refresh" || value.resource !== "messages") return;
-      const affected = new Set(
-        (Array.isArray(value.items) ? value.items : [])
-          .filter((item: any) => item.cache_hidden !== false)
-          .map((item: any) =>
-            selectedMessageId({ account: item.account, uid: String(item.uid), folder: item.source_folder }),
-          ),
-      );
-      if (affected.size) updateSelected((current) => current.filter((id) => !affected.has(id)));
-      const removedOpen = Boolean(open && affected.has(selectedMessageId(open)));
-      if (removedOpen) {
-        setOpen(null);
-        setDetail(null);
+    const request = searches.current.begin();
+    searchBusy.current = true;
+    setSearchLoading(true);
+    try {
+      let value: any;
+      do {
+        value = await apiJson(
+          `/api/messages?account=${encodeURIComponent(nextAccount)}&query=${encodeURIComponent(nextQuery)}&offset=${nextOffset}&limit=${nextLimit}${openFolder ? `&focus_folder=${encodeURIComponent(openFolder)}` : ""}`,
+          { signal: request.signal },
+          "Inbox search failed",
+        );
+        if (!request.current()) return;
+        if (nextOffset === 0 || nextOffset < value.total) break;
+        nextOffset = Math.max(0, Math.floor(Math.max(0, value.total - 1) / nextLimit) * nextLimit);
+      } while (request.current());
+      if (!request.current()) return;
+      setData((previous: any) => ({ ...value, messages: reuseMailRows(previous.messages, value.messages) }));
+      setOffset(nextOffset);
+      setActiveQuery(nextQuery);
+      openUid = reader.current?.uid;
+      openFolder = reader.current?.folder;
+      updateUrl(nextAccount, nextQuery, openUid, nextOffset, nextLimit, openFolder);
+    } catch (error) {
+      if (request.current()) toast.error(errorMessage(error, "Inbox search failed"));
+    } finally {
+      if (request.current()) {
+        searchBusy.current = false;
+        setSearchLoading(false);
+        if (refreshPending.current) {
+          refreshPending.current = false;
+          void load(nextOffset, nextAccount, nextQuery, nextLimit, reader.current?.uid, reader.current?.folder);
+        }
       }
-      void load(offset, account, query, pageSize, removedOpen ? undefined : open?.uid, open?.folder);
-    };
-    return () => socket.close();
-  }, [account, query, offset, pageSize, open?.account, open?.folder, open?.uid]);
-  const fetchMessage = async (mail: Mail, remote = false) => {
+    }
+  };
+  useCacheEvents((value) => {
+    if (value.type !== "cache.refresh" || value.resource !== "messages") return;
+    const affected = new Set(
+      (Array.isArray(value.items) ? value.items : [])
+        .filter((item: any) => item.cache_hidden !== false)
+        .map((item: any) =>
+          selectedMessageId({ account: item.account, uid: String(item.uid), folder: item.source_folder }),
+        ),
+    );
+    if (affected.size) updateSelected((current) => current.filter((id) => !affected.has(id)));
+    const removedOpen = Boolean(open && affected.has(selectedMessageId(open)));
+    if (removedOpen) {
+      reader.current = null;
+      bodies.current.cancel();
+      setLoading(false);
+      setOpen(null);
+      setDetail(null);
+    }
+    if (searchBusy.current) {
+      refreshPending.current = true;
+      return;
+    }
+    void load(offset, account, activeQuery, pageSize, removedOpen ? undefined : open?.uid, open?.folder);
+  });
+  const fetchMessage = useCallback(async (mail: Mail, remote = false) => {
+    const request = bodies.current.begin();
     setLoading(true);
     try {
-      setDetail(
-        await apiJson(
-          `/api/message?account=${encodeURIComponent(mail.account)}&uid=${encodeURIComponent(mail.uid)}&folder=${encodeURIComponent(mail.folder)}${remote ? "&remote=1" : ""}`,
-          {},
-          "Could not load message",
-        ),
+      const value = await apiJson(
+        `/api/message?account=${encodeURIComponent(mail.account)}&uid=${encodeURIComponent(mail.uid)}&folder=${encodeURIComponent(mail.folder)}${remote ? "&remote=1" : ""}`,
+        { signal: request.signal },
+        "Could not load message",
       );
+      if (request.current()) setDetail(value);
     } catch (error) {
-      setDetail({ error: errorMessage(error, "Could not load message") });
+      if (request.current()) setDetail({ error: errorMessage(error, "Could not load message") });
     } finally {
-      setLoading(false);
+      if (request.current()) setLoading(false);
     }
-  };
-  const openMessage = async (mail: Mail) => {
-    setOpen(mail);
-    setDetail(null);
-    setRenderMode("Message");
-    updateUrl(account, query, mail.uid, offset, pageSize, mail.folder);
-    await fetchMessage(mail);
-  };
+  }, []);
+  const openMessage = useCallback(
+    async (mail: Mail) => {
+      reader.current = mail;
+      setOpen(mail);
+      setDetail(null);
+      setRenderMode("Message");
+      updateUrl(account, activeQuery, mail.uid, offset, pageSize, mail.folder);
+      await fetchMessage(mail);
+    },
+    [account, activeQuery, offset, pageSize, updateUrl, fetchMessage],
+  );
   useEffect(() => {
     if (!initialOpenUid) return;
     const match = initial.messages.find(
@@ -180,21 +263,26 @@ export function InboxClient({
     if (match) void openMessage(match);
     else if (initialAccount !== "all")
       void (async () => {
+        const request = bodies.current.begin();
         setLoading(true);
         try {
           const value = await apiJson<any>(
             `/api/message?account=${encodeURIComponent(initialAccount)}&uid=${encodeURIComponent(initialOpenUid)}${initialOpenFolder ? `&folder=${encodeURIComponent(initialOpenFolder)}` : ""}`,
-            {},
+            { signal: request.signal },
             "Could not load message",
           );
+          if (!request.current()) return;
+          reader.current = value;
           setOpen(value);
           setDetail(value);
           setRenderMode("Message");
         } catch (error) {
-          setDetail({ error: errorMessage(error, "Could not load message") });
-          updateUrl(initialAccount, initialQuery);
+          if (request.current()) {
+            setDetail({ error: errorMessage(error, "Could not load message") });
+            updateUrl(initialAccount, initialQuery);
+          }
         } finally {
-          setLoading(false);
+          if (request.current()) setLoading(false);
         }
       })();
   }, []);
@@ -205,10 +293,14 @@ export function InboxClient({
     });
     return () => cancelAnimationFrame(frame);
   }, [open?.account, open?.folder, open?.uid]);
-  const toggle = (mail: Mail) => {
-    const id = selectedMessageId(mail);
-    updateSelected((old) => (old.includes(id) ? old.filter((value) => value !== id) : [...old, id]));
-  };
+  const toggle = useCallback(
+    (mail: Mail) => {
+      const id = selectedMessageId(mail);
+      updateSelected((old) => (old.includes(id) ? old.filter((value) => value !== id) : [...old, id]));
+    },
+    [updateSelected],
+  );
+  const selectedIds = useMemo(() => new Set(selected), [selected]);
   const openedId = open ? selectedMessageId(open) : "";
   const openedSelected = Boolean(openedId && selected.includes(openedId));
   const draftReply = () => {
@@ -221,7 +313,7 @@ export function InboxClient({
     navigateClient("/");
   };
   const refineSearchWithDoot = () => {
-    const currentQuery = query.trim();
+    const currentQuery = activeQuery.trim();
     if (!currentQuery) return;
     saveSelectedSearch({ account, query: currentQuery });
     saveAgentHandoff({
@@ -230,7 +322,7 @@ export function InboxClient({
     navigateClient("/");
   };
   const pageIds = (data.messages || []).map((mail: Mail) => selectedMessageId(mail));
-  const pageSelected = pageIds.length > 0 && pageIds.every((id: string) => selected.includes(id));
+  const pageSelected = pageIds.length > 0 && pageIds.every((id: string) => selectedIds.has(id));
   const togglePage = () => {
     updateSelected((old) => {
       if (pageSelected) return old.filter((id) => !pageIds.includes(id));
@@ -323,10 +415,13 @@ export function InboxClient({
       updateSelected((current) => current.filter((id) => !appliedIds.has(id)));
       const removedOpen = Boolean(open && appliedIds.has(selectedMessageId(open)));
       if (removedOpen) {
+        reader.current = null;
+        bodies.current.cancel();
+        setLoading(false);
         setOpen(null);
         setDetail(null);
       }
-      await load(offset, account, query, pageSize, removedOpen ? undefined : open?.uid, open?.folder);
+      await load(offset, account, activeQuery, pageSize, removedOpen ? undefined : open?.uid, open?.folder);
       if (result.status === "applied")
         toast.success("Mailbox updated", `${result.results?.length || 0} message(s) updated.`);
       else
@@ -370,6 +465,10 @@ export function InboxClient({
               onChange={(event) => {
                 const value = event.target.value;
                 setAccount(value);
+                reader.current = null;
+                bodies.current.cancel();
+                setLoading(false);
+                setDetail(null);
                 setOpen(null);
                 void load(0, value, query);
               }}
@@ -386,7 +485,7 @@ export function InboxClient({
             className="inbox-toolbar-field"
             onSubmit={(event) => {
               event.preventDefault();
-              void load(0);
+              void load(0, account, query);
             }}
           >
             <span>Search cached mail</span>
@@ -398,7 +497,7 @@ export function InboxClient({
                 onChange={(event) => setQuery(event.target.value)}
               />
               <Button className="inbox-search-submit" type="submit" size="sm" tooltip="Search cached email headers">
-                <Search size={15} />
+                {searchLoading ? <LoaderCircle size={15} className="spin" /> : <Search size={15} />}
                 Search
               </Button>
             </div>
@@ -416,11 +515,11 @@ export function InboxClient({
             {pageSelected ? "Clear page" : "Select page"}
           </Button>
         </div>
-        <section className="inbox-list">
-          {query.trim() && (
+        <section className="inbox-list" aria-busy={searchLoading}>
+          {activeQuery.trim() && (
             <div className="inbox-refine-search">
-              <span title={query.trim()}>
-                Current search: <strong>{query.trim()}</strong>
+              <span title={activeQuery.trim()}>
+                Current search: <strong>{activeQuery.trim()}</strong>
               </span>
               <Button size="sm" variant="outline" tooltip="Refine this filtered inbox" onClick={refineSearchWithDoot}>
                 <Sparkles size={14} />
@@ -432,28 +531,14 @@ export function InboxClient({
             {data.messages.map((mail: Mail) => {
               const id = selectedMessageId(mail);
               return (
-                <div
-                  className={`mail-item ${open?.account === mail.account && open?.folder === mail.folder && open?.uid === mail.uid ? "active" : ""}`}
+                <MailRow
                   key={id}
-                  onClick={() => openMessage(mail)}
-                >
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${mail.subject}`}
-                    checked={selected.includes(id)}
-                    onChange={() => toggle(mail)}
-                    onClick={(event) => event.stopPropagation()}
-                  />
-                  <div>
-                    <strong>{mail.sender}</strong>
-                    <div className="subject">{mail.subject || "(no subject)"}</div>
-                    <small>
-                      {mail.account_email} · {mail.folder}
-                      {mail.body_fetched ? " · cached body" : ""}
-                    </small>
-                  </div>
-                  <small>{mail.date ? <LocalTime value={mail.date} /> : ""}</small>
-                </div>
+                  mail={mail}
+                  active={openedId === id}
+                  selected={selectedIds.has(id)}
+                  onOpen={openMessage}
+                  onToggle={toggle}
+                />
               );
             })}
           </div>

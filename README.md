@@ -19,6 +19,8 @@ Doot is an agent-first email workspace that investigates a local IMAP cache, bui
 - Connects IMAP accounts, discovers provider folders, and incrementally syncs message headers using an Inbox-only, provider-recommended, or custom folder scope.
 - Searches the complete cache with SQLite FTS5 and fetches bodies only when opened via `BODY.PEEK[]`.
 - Gives the agent paginated search, aggregation, selected-message, proposal, Flow, artifact, and bounded memory tools.
+- Batches header analysis, Flow inspection, and browser-approved body excerpts in Pi's read-only sandboxed codemode; scripts cannot create proposals, edit Flows or drafts, mutate memory, or access mailbox writes.
+- Approves up to 50 bodies as an exact snapshot of the current Inbox search, then reviews them in bounded batches. The agent can refine selected or conversation-created Flows without duplicating them.
 - Prepares structured local drafts with Doot, then saves them to the account's advertised IMAP Drafts folder only after explicit confirmation.
 - Streams agent reasoning and tool progress into a persistent workspace that survives navigation.
 - Renders agent responses as safe GitHub-flavored Markdown without raw HTML or remote images.
@@ -61,6 +63,8 @@ just check       # lint, type-check, and unit/contract tests
 just build       # production build
 just ui-check    # screenshot and widescreen regression audit; server must be running
 just audit       # production dependency audit
+npm run bench:imap-reads  # synthetic body-fetch latency benchmark; no mailbox access
+npm run bench:queries     # local query benchmark on a private temporary cache copy
 ```
 
 Pre-commit hooks run Biome through lint-staged. Run `npm run prepare` after cloning if npm did not install hooks automatically.
@@ -73,6 +77,8 @@ Browser ── Next.js + React ── SQLite/FTS5
    │             └────────── ImapFlow ── IMAP
    └── SSE (agent run) + WebSocket (background status)
 ```
+
+Body reads are cache-first, coalesced, and batched while preserving `BODY.PEEK[]`; see [IMAP performance and timing metrics](docs/03-development/05-imap-performance.md). Canonical searches use lightweight key ranking, and facet/dashboard aggregates share work; see [local query performance](docs/03-development/06-query-performance.md). The Inbox also avoids redundant renders, reconnects, and stale requests; see [UI performance](docs/03-development/07-ui-performance.md).
 
 One Node process owns Next.js, the Pi runtime, SQLite, IMAP operations, API routes, SSE, and WebSocket events. There is no Python service. See the [architecture guide](docs/03-development/01-architecture.md) and [codebase map](docs/03-development/02-codebase.md).
 

@@ -49,6 +49,6 @@ describe("widescreen UI contract", () => {
     expect(inbox).toContain('className="inbox-toolbar"');
     expect(inbox).toContain('className="inbox-select-page"');
     expect(inbox).toContain("Search cached mail");
-    expect(inbox.indexOf('className="inbox-toolbar"')).toBeLessThan(inbox.indexOf('<section className="inbox-list">'));
+    expect(inbox.indexOf('className="inbox-toolbar"')).toBeLessThan(inbox.indexOf('<section className="inbox-list"'));
   });
 });

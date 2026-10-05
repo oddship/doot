@@ -4,6 +4,13 @@ import { describe, expect, it } from "vitest";
 import { readApiRoutes } from "./source-contract";
 
 describe("maintenance boundaries", () => {
+  it("forwards development HMR upgrades without exposing unknown WebSocket paths", async () => {
+    const server = await readFile("server.mjs", "utf8");
+    expect(server).toContain("const handleUpgrade = app.getUpgradeHandler()");
+    expect(server).toContain('dev && (pathname === "/_next/hmr" || pathname === "/_next/webpack-hmr")');
+    expect(server).toContain("handleUpgrade(request, socket, head)");
+    expect(server).toContain('if (request.url !== "/ws") return socket.destroy()');
+  });
   it("keeps rule persistence outside the command router", async () => {
     const store = await readFile("lib/store.ts", "utf8");
     const rules = await readFile("lib/rules.ts", "utf8");

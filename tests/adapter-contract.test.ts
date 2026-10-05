@@ -6,10 +6,13 @@ import { compactSource } from "./source-contract";
 describe("IMAP adapter contract", () => {
   it("uses BODY.PEEK semantics, read-only mailbox locks, and cached bodies", async () => {
     const source = compactSource(await readFile("lib/imap.ts", "utf8"));
-    expect(source).toContain("source: true");
-    expect(source).toContain("BODY.PEEK[]");
+    const bodyReader = compactSource(await readFile("lib/imap-body-read.ts", "utf8"));
+    expect(bodyReader).toContain("source: true");
+    expect(bodyReader).toContain("BODY.PEEK[]");
     expect(source).toContain("getMailboxLock(folder, { readOnly");
-    expect(source).toContain("if (!existing.body_fetched)");
+    expect(source).toContain("if (cached.get(key))");
+    expect(source).toContain("SELECT body_fetched FROM messages");
+    expect(source).toContain("pendingBodyReads");
   });
   it("reuses bounded read-only IMAP sessions and disposes them after idle time", async () => {
     const source = compactSource(await readFile("lib/imap.ts", "utf8"));

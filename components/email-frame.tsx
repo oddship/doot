@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 const frameCss = `
   :root { color-scheme: light; }
@@ -20,14 +20,21 @@ function documentHtml(body: string) {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${frameCss}</style></head><body>${body}</body></html>`;
 }
 
-export function EmailFrame({ html }: { html: string }) {
+export const EmailFrame = memo(function EmailFrame({ html }: { html: string }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const observer = useRef<ResizeObserver | null>(null);
+  const resizeFrame = useRef<number | null>(null);
   const [height, setHeight] = useState(420);
   const sourceDocument = useMemo(() => documentHtml(html), [html]);
 
-  useEffect(() => () => observer.current?.disconnect(), []);
-  useEffect(() => setHeight(420), [html]);
+  useEffect(() => {
+    setHeight(420);
+    return () => {
+      observer.current?.disconnect();
+      if (resizeFrame.current !== null) cancelAnimationFrame(resizeFrame.current);
+      resizeFrame.current = null;
+    };
+  }, [html]);
 
   const prepare = () => {
     const document = frame.current?.contentDocument;
@@ -45,7 +52,14 @@ export function EmailFrame({ html }: { html: string }) {
         cells[2].style.setProperty("width", "22%", "important");
       }
     });
-    const resize = () => setHeight(Math.max(420, Math.ceil(document.documentElement.scrollHeight)));
+    const resize = () => {
+      if (resizeFrame.current !== null) return;
+      resizeFrame.current = requestAnimationFrame(() => {
+        resizeFrame.current = null;
+        const next = Math.max(420, Math.ceil(document.documentElement.scrollHeight));
+        setHeight((current) => (current === next ? current : next));
+      });
+    };
     observer.current?.disconnect();
     observer.current = new ResizeObserver(resize);
     observer.current.observe(document.body);
@@ -63,4 +77,4 @@ export function EmailFrame({ html }: { html: string }) {
       onLoad={prepare}
     />
   );
-}
+});

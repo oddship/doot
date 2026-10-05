@@ -50,6 +50,7 @@ import {
 type ReadApproval = {
   id: string;
   reason: string;
+  scope?: { account: string; query: string; total: number };
   messages: Array<{ account: string; uid: string; folder?: string; sender?: string; subject?: string }>;
   status?: "pending" | "approved" | "denied";
 };
@@ -445,7 +446,7 @@ export function WorkspaceClient({
     saveSelectedIds([...request.messages.map(selectedMessageId), ...loadSelectedIds()]);
     setReadApprovalStatus(request.id, "approved");
     void run(
-      `I approved body access for the ${request.messages.length} requested message${request.messages.length === 1 ? "" : "s"}. Read the selected message${request.messages.length === 1 ? "" : "s"} now and continue my task.`,
+      `I approved body access for the ${request.messages.length} requested message${request.messages.length === 1 ? "" : "s"}. This is an exact snapshot, not permission for future matches. Read the selected message${request.messages.length === 1 ? "" : "s"} using read-only codemode in bounded batches now and continue my task.`,
     );
   };
   const newConversation = () => {
@@ -599,6 +600,24 @@ export function WorkspaceClient({
                     <Artifact title="Message body access">
                       <div className="body-access-request">
                         <p>{entry.readApproval.reason}</p>
+                        <p>
+                          Approve only these {entry.readApproval.messages.length} message bodies for review, including
+                          read-only codemode.
+                          {entry.readApproval.scope && (
+                            <>
+                              {" "}
+                              Search snapshot: <strong>{entry.readApproval.scope.query}</strong> in{" "}
+                              {entry.readApproval.scope.account}
+                              {entry.readApproval.scope.total > entry.readApproval.messages.length && (
+                                <>
+                                  {" "}
+                                  ({entry.readApproval.messages.length} of {entry.readApproval.scope.total} matches)
+                                </>
+                              )}
+                              . New matches are not included.
+                            </>
+                          )}
+                        </p>
                         <ul>
                           {entry.readApproval.messages.map((message) => (
                             <li key={`${message.account}:${message.folder || "INBOX"}:${message.uid}`}>
@@ -620,7 +639,7 @@ export function WorkspaceClient({
                             </Button>
                             <Button
                               size="sm"
-                              tooltip="Allow these message bodies"
+                              tooltip="Allow only this snapshot of message bodies, including codemode review"
                               disabled={running}
                               onClick={() => approveRead(entry.readApproval!)}
                             >
@@ -631,7 +650,7 @@ export function WorkspaceClient({
                           <div className={`body-access-decision ${entry.readApproval.status}`}>
                             {entry.readApproval.status === "approved" ? <ShieldCheck size={14} /> : <X size={14} />}
                             {entry.readApproval.status === "approved"
-                              ? "Approved and added to context"
+                              ? "Approved for review, including codemode"
                               : "Not approved"}
                           </div>
                         )}

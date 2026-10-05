@@ -19,7 +19,12 @@ function openDatabase() {
   connection.pragma("synchronous = NORMAL");
   connection.pragma("busy_timeout = 20000");
   connection.pragma("temp_store = MEMORY");
-  connection.exec(`
+  try {
+    // Next.js can load this module in multiple server contexts/processes. Serialize
+    // schema writers and keep the old schema visible to WAL readers until commit.
+    connection
+      .transaction(() => {
+        connection.exec(`
     CREATE TABLE IF NOT EXISTS messages (
       account TEXT NOT NULL, account_email TEXT NOT NULL, uid TEXT NOT NULL,
       folder TEXT NOT NULL DEFAULT 'INBOX', sender TEXT NOT NULL DEFAULT '',
@@ -110,31 +115,31 @@ function openDatabase() {
     CREATE INDEX IF NOT EXISTS email_rules_status_updated ON email_rules(status,enabled,updated_at DESC);
     CREATE INDEX IF NOT EXISTS schedules_due ON schedules(enabled,next_run_at);
   `);
-  connection.exec("DROP VIEW IF EXISTS canonical_messages");
+        connection.exec("DROP VIEW IF EXISTS canonical_messages");
 
-  let messageInfo = connection.prepare("PRAGMA table_info(messages)").all() as any[];
-  const messageColumns = new Set(messageInfo.map((row) => row.name));
-  if (!messageColumns.has("date_ts"))
-    connection.exec("ALTER TABLE messages ADD COLUMN date_ts INTEGER NOT NULL DEFAULT 0");
-  if (!messageColumns.has("flags_json"))
-    connection.exec("ALTER TABLE messages ADD COLUMN flags_json TEXT NOT NULL DEFAULT '[]'");
-  if (!messageColumns.has("labels_json"))
-    connection.exec("ALTER TABLE messages ADD COLUMN labels_json TEXT NOT NULL DEFAULT '[]'");
-  if (!messageColumns.has("provider_id"))
-    connection.exec("ALTER TABLE messages ADD COLUMN provider_id TEXT NOT NULL DEFAULT ''");
-  if (!messageColumns.has("unread"))
-    connection.exec("ALTER TABLE messages ADD COLUMN unread INTEGER NOT NULL DEFAULT 0");
-  if (!messageColumns.has("present"))
-    connection.exec("ALTER TABLE messages ADD COLUMN present INTEGER NOT NULL DEFAULT 1");
-  messageInfo = connection.prepare("PRAGMA table_info(messages)").all() as any[];
-  const messagePrimaryKey = messageInfo
-    .filter((row) => row.pk)
-    .sort((left, right) => left.pk - right.pk)
-    .map((row) => row.name)
-    .join(",");
-  if (messagePrimaryKey !== "account,folder,uid") {
-    connection.transaction(() => {
-      connection.exec(`
+        let messageInfo = connection.prepare("PRAGMA table_info(messages)").all() as any[];
+        const messageColumns = new Set(messageInfo.map((row) => row.name));
+        if (!messageColumns.has("date_ts"))
+          connection.exec("ALTER TABLE messages ADD COLUMN date_ts INTEGER NOT NULL DEFAULT 0");
+        if (!messageColumns.has("flags_json"))
+          connection.exec("ALTER TABLE messages ADD COLUMN flags_json TEXT NOT NULL DEFAULT '[]'");
+        if (!messageColumns.has("labels_json"))
+          connection.exec("ALTER TABLE messages ADD COLUMN labels_json TEXT NOT NULL DEFAULT '[]'");
+        if (!messageColumns.has("provider_id"))
+          connection.exec("ALTER TABLE messages ADD COLUMN provider_id TEXT NOT NULL DEFAULT ''");
+        if (!messageColumns.has("unread"))
+          connection.exec("ALTER TABLE messages ADD COLUMN unread INTEGER NOT NULL DEFAULT 0");
+        if (!messageColumns.has("present"))
+          connection.exec("ALTER TABLE messages ADD COLUMN present INTEGER NOT NULL DEFAULT 1");
+        messageInfo = connection.prepare("PRAGMA table_info(messages)").all() as any[];
+        const messagePrimaryKey = messageInfo
+          .filter((row) => row.pk)
+          .sort((left, right) => left.pk - right.pk)
+          .map((row) => row.name)
+          .join(",");
+        if (messagePrimaryKey !== "account,folder,uid") {
+          connection.transaction(() => {
+            connection.exec(`
         DROP TRIGGER IF EXISTS messages_fts_insert;
         DROP TRIGGER IF EXISTS messages_fts_delete;
         DROP TRIGGER IF EXISTS messages_fts_update;
@@ -159,35 +164,37 @@ function openDatabase() {
         FROM messages_legacy;
         DROP TABLE messages_legacy;
       `);
-    })();
-  }
-  const viewColumns = new Set(
-    (connection.prepare("PRAGMA table_info(agent_views)").all() as any[]).map((row) => row.name),
-  );
-  if (!viewColumns.has("schema_version"))
-    connection.exec("ALTER TABLE agent_views ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 0");
-  if (!viewColumns.has("session_id")) connection.exec("ALTER TABLE agent_views ADD COLUMN session_id TEXT");
-  let syncInfo = connection.prepare("PRAGMA table_info(sync_state)").all() as any[];
-  const syncColumns = new Set(syncInfo.map((row) => row.name));
-  if (!syncColumns.has("folder"))
-    connection.exec("ALTER TABLE sync_state ADD COLUMN folder TEXT NOT NULL DEFAULT 'INBOX'");
-  if (!syncColumns.has("uid_validity")) connection.exec("ALTER TABLE sync_state ADD COLUMN uid_validity TEXT");
-  if (!syncColumns.has("mailbox_messages"))
-    connection.exec("ALTER TABLE sync_state ADD COLUMN mailbox_messages INTEGER");
-  if (!syncColumns.has("mailbox_unseen")) connection.exec("ALTER TABLE sync_state ADD COLUMN mailbox_unseen INTEGER");
-  if (!syncColumns.has("uid_next")) connection.exec("ALTER TABLE sync_state ADD COLUMN uid_next INTEGER");
-  if (!syncColumns.has("highest_modseq")) connection.exec("ALTER TABLE sync_state ADD COLUMN highest_modseq TEXT");
-  if (!syncColumns.has("sync_days")) connection.exec("ALTER TABLE sync_state ADD COLUMN sync_days INTEGER");
-  if (!syncColumns.has("sync_limit")) connection.exec("ALTER TABLE sync_state ADD COLUMN sync_limit INTEGER");
-  syncInfo = connection.prepare("PRAGMA table_info(sync_state)").all() as any[];
-  const syncPrimaryKey = syncInfo
-    .filter((row) => row.pk)
-    .sort((left, right) => left.pk - right.pk)
-    .map((row) => row.name)
-    .join(",");
-  if (syncPrimaryKey !== "account,folder") {
-    connection.transaction(() => {
-      connection.exec(`
+          })();
+        }
+        const viewColumns = new Set(
+          (connection.prepare("PRAGMA table_info(agent_views)").all() as any[]).map((row) => row.name),
+        );
+        if (!viewColumns.has("schema_version"))
+          connection.exec("ALTER TABLE agent_views ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 0");
+        if (!viewColumns.has("session_id")) connection.exec("ALTER TABLE agent_views ADD COLUMN session_id TEXT");
+        let syncInfo = connection.prepare("PRAGMA table_info(sync_state)").all() as any[];
+        const syncColumns = new Set(syncInfo.map((row) => row.name));
+        if (!syncColumns.has("folder"))
+          connection.exec("ALTER TABLE sync_state ADD COLUMN folder TEXT NOT NULL DEFAULT 'INBOX'");
+        if (!syncColumns.has("uid_validity")) connection.exec("ALTER TABLE sync_state ADD COLUMN uid_validity TEXT");
+        if (!syncColumns.has("mailbox_messages"))
+          connection.exec("ALTER TABLE sync_state ADD COLUMN mailbox_messages INTEGER");
+        if (!syncColumns.has("mailbox_unseen"))
+          connection.exec("ALTER TABLE sync_state ADD COLUMN mailbox_unseen INTEGER");
+        if (!syncColumns.has("uid_next")) connection.exec("ALTER TABLE sync_state ADD COLUMN uid_next INTEGER");
+        if (!syncColumns.has("highest_modseq"))
+          connection.exec("ALTER TABLE sync_state ADD COLUMN highest_modseq TEXT");
+        if (!syncColumns.has("sync_days")) connection.exec("ALTER TABLE sync_state ADD COLUMN sync_days INTEGER");
+        if (!syncColumns.has("sync_limit")) connection.exec("ALTER TABLE sync_state ADD COLUMN sync_limit INTEGER");
+        syncInfo = connection.prepare("PRAGMA table_info(sync_state)").all() as any[];
+        const syncPrimaryKey = syncInfo
+          .filter((row) => row.pk)
+          .sort((left, right) => left.pk - right.pk)
+          .map((row) => row.name)
+          .join(",");
+        if (syncPrimaryKey !== "account,folder") {
+          connection.transaction(() => {
+            connection.exec(`
         ALTER TABLE sync_state RENAME TO sync_state_legacy;
         CREATE TABLE sync_state (
           account TEXT NOT NULL, folder TEXT NOT NULL DEFAULT 'INBOX', last_uid INTEGER NOT NULL DEFAULT 0,
@@ -203,31 +210,31 @@ function openDatabase() {
         FROM sync_state_legacy;
         DROP TABLE sync_state_legacy;
       `);
-    })();
-  }
-  const sessionColumns = new Set(
-    (connection.prepare("PRAGMA table_info(agent_sessions)").all() as any[]).map((row) => row.name),
-  );
-  if (!sessionColumns.has("history_kind"))
-    connection.exec("ALTER TABLE agent_sessions ADD COLUMN history_kind TEXT NOT NULL DEFAULT 'agent'");
-  const credentialColumns = new Set(
-    (connection.prepare("PRAGMA table_info(agent_credentials)").all() as any[]).map((row) => row.name),
-  );
-  if (!credentialColumns.has("auth_type"))
-    connection.exec("ALTER TABLE agent_credentials ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'api_key'");
-  if (!credentialColumns.has("credential_json"))
-    connection.exec("ALTER TABLE agent_credentials ADD COLUMN credential_json TEXT NOT NULL DEFAULT ''");
-  const ftsColumns = new Set(
-    (connection.prepare("PRAGMA table_info(message_fts)").all() as any[]).map((row) => row.name),
-  );
-  if (!ftsColumns.has("folder"))
-    connection.exec(`
+          })();
+        }
+        const sessionColumns = new Set(
+          (connection.prepare("PRAGMA table_info(agent_sessions)").all() as any[]).map((row) => row.name),
+        );
+        if (!sessionColumns.has("history_kind"))
+          connection.exec("ALTER TABLE agent_sessions ADD COLUMN history_kind TEXT NOT NULL DEFAULT 'agent'");
+        const credentialColumns = new Set(
+          (connection.prepare("PRAGMA table_info(agent_credentials)").all() as any[]).map((row) => row.name),
+        );
+        if (!credentialColumns.has("auth_type"))
+          connection.exec("ALTER TABLE agent_credentials ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'api_key'");
+        if (!credentialColumns.has("credential_json"))
+          connection.exec("ALTER TABLE agent_credentials ADD COLUMN credential_json TEXT NOT NULL DEFAULT ''");
+        const ftsColumns = new Set(
+          (connection.prepare("PRAGMA table_info(message_fts)").all() as any[]).map((row) => row.name),
+        );
+        if (!ftsColumns.has("folder"))
+          connection.exec(`
       DROP TRIGGER IF EXISTS messages_fts_insert;
       DROP TRIGGER IF EXISTS messages_fts_delete;
       DROP TRIGGER IF EXISTS messages_fts_update;
       DROP TABLE IF EXISTS message_fts;
     `);
-  connection.exec(`
+        connection.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
       account UNINDEXED, folder UNINDEXED, uid UNINDEXED, sender, subject,
       tokenize='unicode61 remove_diacritics 2');
@@ -248,16 +255,16 @@ function openDatabase() {
     CREATE INDEX IF NOT EXISTS messages_account_present_date ON messages(account,present,date_ts DESC);
     CREATE INDEX IF NOT EXISTS messages_account_provider_present ON messages(account,provider_id,present);
   `);
-  connection
-    .prepare(`INSERT INTO message_fts(account,folder,uid,sender,subject)
+        connection
+          .prepare(`INSERT INTO message_fts(account,folder,uid,sender,subject)
     SELECT m.account,m.folder,m.uid,m.sender,m.subject FROM messages m
     WHERE NOT EXISTS(SELECT 1 FROM message_fts f
       WHERE f.account=m.account AND f.folder=m.folder AND f.uid=m.uid)`)
-    .run();
-  connection.exec(`
+          .run();
+        connection.exec(`
     CREATE VIEW canonical_messages AS
-    SELECT * FROM (
-      SELECT messages.*,
+    SELECT messages.*,canonical.canonical_rank FROM (
+      SELECT account,folder,uid,
         ROW_NUMBER() OVER (
           PARTITION BY account,
             CASE WHEN provider_id<>'' THEN 'provider:'||provider_id ELSE 'uid:'||folder||char(0)||uid END
@@ -269,10 +276,17 @@ function openDatabase() {
         ) canonical_rank
       FROM messages
       WHERE present=1
-    )
-    WHERE canonical_rank=1;
+    ) canonical
+    JOIN messages ON messages.account=canonical.account AND messages.folder=canonical.folder AND messages.uid=canonical.uid
+    WHERE canonical.canonical_rank=1;
   `);
-  return connection;
+      })
+      .immediate();
+    return connection;
+  } catch (error) {
+    connection.close();
+    throw error;
+  }
 }
 
 if (!globalDatabase.__emailAgentDatabase) globalDatabase.__emailAgentDatabase = openDatabase();

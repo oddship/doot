@@ -4,7 +4,6 @@ import {
   DEFAULT_SETTINGS,
   db,
   json,
-  messageWhere,
   now,
   queryMessages,
   settingsValue,
@@ -16,12 +15,14 @@ import {
   discoverAccountFolders,
   mutateAccountFolder,
   readMessage,
+  readMessages,
   syncAccount,
   testAccount,
   warmMessageReader,
 } from "@/lib/imap";
 import { type FolderMutation, isProtectedMailbox } from "@/lib/imap-folder";
 import { providerForHost } from "@/lib/mail-provider";
+import { messageFacets } from "@/lib/message-facets";
 import {
   deleteRule,
   getRule,
@@ -31,6 +32,7 @@ import {
   prepareRuleProposal,
   previewRule,
   reconcileFolderRules,
+  saveAgentSuggestedRule,
   saveRule,
 } from "@/lib/rules";
 
@@ -55,16 +57,26 @@ function parseValue<T = any>(value: string | undefined, message = "invalid JSON"
 }
 
 function dashboard() {
-  const totals = db
-    .prepare("SELECT COUNT(*) cached,SUM(CASE WHEN body_fetched=1 THEN 1 ELSE 0 END) bodies FROM canonical_messages")
-    .get();
-  const accounts = db
-    .prepare(`SELECT m.account,m.account_email,COUNT(*) cached,MAX(s.last_sync) last_sync,MAX(s.last_error) last_error
+  const accountRows = db
+    .prepare(`SELECT m.account,m.account_email,COUNT(*) cached,
+      SUM(CASE WHEN m.body_fetched=1 THEN 1 ELSE 0 END) bodies,MAX(s.last_sync) last_sync,MAX(s.last_error) last_error
     FROM canonical_messages m LEFT JOIN (
       SELECT account,MAX(last_sync) last_sync,MAX(last_error) last_error FROM sync_state GROUP BY account
     ) s ON s.account=m.account
     GROUP BY m.account,m.account_email ORDER BY m.account`)
-    .all();
+    .all() as Array<{
+    account: string;
+    account_email: string;
+    cached: number;
+    bodies: number;
+    last_sync: string | null;
+    last_error: string | null;
+  }>;
+  const totals = {
+    cached: accountRows.reduce((count, row) => count + row.cached, 0),
+    bodies: accountRows.length ? accountRows.reduce((count, row) => count + row.bodies, 0) : null,
+  };
+  const accounts = accountRows.map(({ bodies: _bodies, ...row }) => row);
   const recent = db
     .prepare(
       `SELECT account,account_email,uid,folder,sender,subject,date FROM canonical_messages
@@ -91,54 +103,6 @@ function dashboard() {
       }
     : null;
   return { totals, accounts, recent, actions: actions.map(({ items_json: _discard, ...row }) => row), generated };
-}
-
-function facets(input: { account?: string; query?: string; days?: number; limit?: number }) {
-  const { where, values } = messageWhere(input);
-  const limit = Math.max(5, Math.min(input.limit || 25, 50));
-  const total = Number(
-    (db.prepare(`SELECT COUNT(*) count FROM canonical_messages messages${where}`).get(...values) as any).count,
-  );
-  const accounts = db
-    .prepare(
-      `SELECT account,account_email,COUNT(*) count FROM canonical_messages messages${where} GROUP BY account,account_email ORDER BY count DESC`,
-    )
-    .all(...values);
-  const top_senders = db
-    .prepare(
-      `SELECT sender name,COUNT(*) count FROM canonical_messages messages${where} GROUP BY sender ORDER BY count DESC,sender LIMIT ?`,
-    )
-    .all(...values, limit) as any[];
-  const domainCounts = new Map<string, number>();
-  for (const row of db.prepare(`SELECT sender FROM canonical_messages messages${where}`).all(...values) as any[]) {
-    const match = String(row.sender).match(/@([A-Za-z0-9.-]+)/);
-    const domain = match?.[1]?.toLowerCase() || "unknown";
-    domainCounts.set(domain, (domainCounts.get(domain) || 0) + 1);
-  }
-  const top_domains = [...domainCounts]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, limit)
-    .map(([name, count]) => ({ name, count }));
-  const timestamp = Math.floor(Date.now() / 1000);
-  const age_buckets = [
-    ["last_24_hours", timestamp - 86400, timestamp + 1],
-    ["last_7_days", timestamp - 7 * 86400, timestamp - 86400],
-    ["last_30_days", timestamp - 30 * 86400, timestamp - 7 * 86400],
-    ["older", 0, timestamp - 30 * 86400],
-  ].map(([label, lower, upper]) => {
-    const join = where ? `${where} AND` : " WHERE";
-    return {
-      label,
-      count: Number(
-        (
-          db
-            .prepare(`SELECT COUNT(*) count FROM canonical_messages messages${join} date_ts>=? AND date_ts<?`)
-            .get(...values, lower, upper) as any
-        ).count,
-      ),
-    };
-  });
-  return { total, filters: input, accounts, top_senders, top_domains, age_buckets };
 }
 
 function accountList() {
@@ -325,6 +289,9 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
     case "rule-get":
       result = { rule: getRule(Number(required(rest[0], "rule id is required"))) };
       break;
+    case "rule-agent-suggest":
+      result = { rule: saveAgentSuggestedRule(parseValue(rest[0])) };
+      break;
     case "rule-upsert":
       result = { rule: saveRule(parseValue(rest[0])) };
       break;
@@ -419,7 +386,7 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       };
       break;
     case "facets":
-      result = facets({
+      result = messageFacets({
         account: option(rest, "--account", "all"),
         query: option(rest, "--query"),
         days: numberOption(rest, "--days", 0),
@@ -475,6 +442,9 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       };
       break;
     }
+    case "read-batch":
+      result = await readMessages(parseValue(rest[0]));
+      break;
     case "read":
       result = await readMessage(
         required(rest[0], "account is required"),
