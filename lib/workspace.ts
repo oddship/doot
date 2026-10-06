@@ -22,7 +22,12 @@ const workspaceActionIntentSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("create_proposal"),
-      action: z.enum(["archive", "move", "delete"]),
+      action: z.enum(["mark_read", "archive", "move", "delete"]),
+      actions: z
+        .array(z.enum(["mark_read", "archive", "move", "delete"]))
+        .min(1)
+        .max(2)
+        .optional(),
       reason: text,
       items: z
         .array(

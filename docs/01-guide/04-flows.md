@@ -1,6 +1,6 @@
 # Flow lifecycle and activation
 
-A Flow is a saved Inbox filter plus one action: archive, move, or delete. Saving or activating a Flow never changes mail by itself.
+A Flow is a saved Inbox filter plus a reviewed action plan: mark as read, archive, move, or delete. It may also mark as read **before** one archive, move, or delete step. Other multi-action sequences are not supported. Saving or activating a Flow never changes mail by itself.
 
 ## Statuses
 
@@ -33,9 +33,13 @@ At run time, an active Flow searches the current cache and creates a bounded pro
 Running is always separate from activation:
 
 1. Choose **Review & run** to prepare a bounded batch of up to 100 current matches.
-2. Inspect the filter, action, account, count, and sample messages in the approval dialog.
+2. Inspect the filter, complete ordered action sequence, destination, account, count, and sample messages in the approval dialog.
 3. Choose **Approve and run** to create an audited proposal and apply that one batch.
 
 The browser sends an explicit confirmation for this run. A later batch requires a new preview and confirmation, regardless of whether the Flow is active.
+
+To mark bank alerts as read and file them, edit the existing Flow, select **Move**, choose the discovered `transactions` folder/label, and check **Mark as read before** moving. Save and review **Mark as read → Move to transactions** before confirming. Agent edits preserve the existing ID and leave the Flow disabled for review.
+
+Running rejects a definition changed since review. Steps are not atomic: marking read may succeed while a subsequent relocation fails. History shows partial failures and completed steps; inspect it before retrying. Reading a body alone still preserves unread state.
 
 For delete actions, approval moves or deletes the reviewed messages according to the connected provider. For Gmail move actions, Doot applies the chosen custom label and removes Inbox as described in the Flow editor.

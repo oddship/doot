@@ -14,7 +14,7 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=22 <23"
+    "node": ">=22.19 <23"
   },
   "scripts": {
     "dev": "NODE_ENV=development node server.mjs",
@@ -23,6 +23,8 @@
     "test": "vitest run",
     "test:ui": "node scripts/ui-audit.mjs",
     "bench:imap-reads": "node scripts/benchmark-body-reads.mjs",
+    "prototype:durable": "node scripts/prototype-durable-recovery.mjs",
+    "test:durable": "vitest run tests/agent-durable.test.ts tests/agent-durable-runtime.test.ts tests/agent-durable-recovery.test.ts tests/durable-mailbox.test.ts tests/durable-mailbox-wire.test.ts",
     "bench:queries": "DOOT_QUERY_BENCHMARK=1 vitest run tests/message-query-performance.test.ts --disableConsoleIntercept",
     "demo:build": "node scripts/build-static-demo.mjs",
     "demo:serve": "node scripts/serve-static-demo.mjs",
@@ -37,7 +39,10 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@earendil-works/chord": "1.0.3",
+    "@earendil-works/pi-ai": "1.0.3",
     "@earendil-works/pi-coding-agent": "1.0.3",
+    "@earendil-works/pi-durable": "1.0.3",
     "better-sqlite3": "13.0.3",
     "imapflow": "1.7.1",
     "lucide-react": "1.33.0",

@@ -10,9 +10,21 @@ const fake = vi.hoisted(() => ({
   sourceHook: undefined as (() => void) | undefined,
   fail: false,
   validity: 7,
+  flagFail: false,
+  moveFail: false,
+  operations: [] as string[],
 }));
 vi.mock("imapflow", () => ({
   ImapFlow: class {
+    capabilities = new Set<string>();
+    messageFlagsAdd = vi.fn(async () => {
+      fake.operations.push("mark_read");
+      return !fake.flagFail;
+    });
+    messageMove = vi.fn(async () => {
+      fake.operations.push("move");
+      return !fake.moveFail;
+    });
     folder = "";
     mailbox: any;
     on = vi.fn(() => this);
@@ -44,7 +56,7 @@ vi.mock("imapflow", () => ({
 const directory = mkdtempSync(path.join(tmpdir(), "doot-body-batch-"));
 process.env.DOOT_DATABASE_PATH = path.join(directory, "cache.sqlite3");
 const { db } = await import("@/lib/database");
-const { readMessages, readMessage, closeAccountReadSessions } = await import("@/lib/imap");
+const { readMessages, readMessage, closeAccountReadSessions, applyMailboxActions } = await import("@/lib/imap");
 db.prepare("INSERT INTO email_accounts(name,host,username,password,created_at,updated_at) VALUES(?,?,?,?,?,?)").run(
   "work",
   "imap.example.test",
@@ -84,6 +96,9 @@ beforeEach(() => {
   fake.sourceHook = undefined;
   fake.fail = false;
   fake.validity = 7;
+  fake.flagFail = false;
+  fake.moveFail = false;
+  fake.operations = [];
 });
 afterEach(async () => {
   await closeAccountReadSessions("work");
@@ -93,6 +108,64 @@ afterAll(() => {
   delete (globalThis as any).__emailAgentDatabase;
   delete process.env.DOOT_DATABASE_PATH;
   rmSync(directory, { recursive: true, force: true });
+});
+
+describe("confirmed Flow action sequences", () => {
+  const items = () =>
+    refs(1).map((ref) => ({ account: ref.account, uid: ref.uid, source_folder: ref.folder, folder: "Transactions" }));
+  const seen = "\\Seen";
+  it("marks read before moving using one write session and source UID", async () => {
+    seed(1);
+    const result = await applyMailboxActions(["mark_read", "move"], items());
+    expect(result.status).toBe("applied");
+    expect(fake.operations).toEqual(["mark_read", "move"]);
+    expect(fake.clients).toHaveLength(1);
+    expect(fake.clients[0].messageFlagsAdd).toHaveBeenCalledWith([1], [seen], { uid: true, silent: true });
+    expect(fake.clients[0].getMailboxLock).toHaveBeenCalledWith("INBOX", expect.objectContaining({ readOnly: false }));
+    expect(db.prepare("SELECT unread,present,flags_json FROM messages").get()).toEqual({
+      unread: 0,
+      present: 0,
+      flags_json: JSON.stringify([seen]),
+    });
+  });
+  it("marks read without hiding messages or stripping Inbox labels, including provider copies", async () => {
+    seed(1);
+    seed(1, "Archive");
+    const flagged = "\\Flagged";
+    db.prepare("UPDATE messages SET provider_id='shared',labels_json=?,flags_json=?").run(
+      '["Inbox"]',
+      JSON.stringify([flagged]),
+    );
+    const result = await applyMailboxActions(["mark_read"], items());
+    expect(result.status).toBe("applied");
+    expect(fake.operations).toEqual(["mark_read"]);
+    expect(db.prepare("SELECT SUM(unread) unread,SUM(present) present FROM messages").get()).toEqual({
+      unread: 0,
+      present: 2,
+    });
+    expect(db.prepare("SELECT labels_json FROM messages LIMIT 1").get()).toEqual({ labels_json: '["Inbox"]' });
+    expect(JSON.parse((db.prepare("SELECT flags_json FROM messages LIMIT 1").get() as any).flags_json)).toEqual([
+      flagged,
+      seen,
+    ]);
+  });
+  it("never moves if read marking is unconfirmed, and warns that the outcome may be unknown", async () => {
+    seed(1);
+    fake.flagFail = true;
+    const result = await applyMailboxActions(["mark_read", "move"], items());
+    expect(result.status).toBe("partial_failure");
+    expect(fake.operations).toEqual(["mark_read"]);
+    expect(result.errors[0].error).toContain("outcome may be unknown");
+    expect(db.prepare("SELECT unread,present FROM messages").get()).toEqual({ unread: 1, present: 1 });
+  });
+  it("reports and caches completed read marking when a later move fails", async () => {
+    seed(1);
+    fake.moveFail = true;
+    const result = await applyMailboxActions(["mark_read", "move"], items());
+    expect(result.status).toBe("partial_failure");
+    expect(result.results[0]).toMatchObject({ ok: false, cache_hidden: false, completed_actions: ["mark_read"] });
+    expect(db.prepare("SELECT unread,present FROM messages").get()).toEqual({ unread: 0, present: 1 });
+  });
 });
 
 describe("cache-first coalesced IMAP body reads", () => {

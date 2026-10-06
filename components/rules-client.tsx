@@ -21,6 +21,7 @@ import { Badge, Button, Card, Dialog, Input, Label, Textarea, Tooltip } from "@/
 import { apiJson, errorMessage } from "@/lib/client-api";
 import { navigateClient, replaceClientUrl } from "@/lib/client-navigation";
 import { saveSelectedRule } from "@/lib/client-rule-selection";
+import { mailActionLabel, ruleActionFingerprint } from "@/lib/mail-actions";
 import type { MailProvider } from "@/lib/mail-provider";
 import type { EmailRule as Rule } from "@/lib/rules";
 
@@ -79,12 +80,7 @@ export function RulesClient({
     name === "all" ? "All accounts" : accounts.find((account) => account.name === name)?.email || name;
   const destinationNoun = (name: string) =>
     accounts.find((account) => account.name === name)?.provider === "gmail" ? "label" : "folder";
-  const actionLabel = (rule: Pick<Rule, "action" | "target_folder" | "account">) =>
-    rule.action === "archive"
-      ? "Archive matching messages"
-      : rule.action === "delete"
-        ? "Delete matching messages"
-        : `Move to ${destinationNoun(rule.account)} ${rule.target_folder}`;
+  const actionLabel = (rule: Rule) => mailActionLabel(rule);
   const editorFolders = useMemo(
     () =>
       folders.filter(
@@ -107,7 +103,18 @@ export function RulesClient({
     try {
       const value = await apiJson<{ rule: Rule }>(
         path,
-        { method: editor.id ? "PUT" : "POST", json: editor },
+        {
+          method: editor.id ? "PUT" : "POST",
+          json: {
+            ...editor,
+            actions:
+              editor.action === "mark_read"
+                ? ["mark_read"]
+                : editor.mark_read
+                  ? ["mark_read", editor.action]
+                  : [editor.action],
+          },
+        },
         "Could not save flow",
       );
       replaceRule(value.rule);
@@ -178,7 +185,7 @@ export function RulesClient({
     try {
       const result = await apiJson<any>(
         `/api/rules/${proposal.rule.id}/run`,
-        { method: "POST", json: { confirm: true } },
+        { method: "POST", json: { confirm: true, expected_rule: ruleActionFingerprint(proposal.rule) } },
         "Could not run flow",
       );
       setProposal(null);
@@ -198,7 +205,7 @@ export function RulesClient({
   const openEditor = (rule?: Rule) =>
     setEditor(
       rule
-        ? { ...rule }
+        ? { ...rule, mark_read: rule.actions?.includes("mark_read") }
         : {
             name: "",
             account: "all",
@@ -264,7 +271,7 @@ export function RulesClient({
                 <span>
                   <strong>{rule.name}</strong>
                   <small>
-                    {accountEmail(rule.account)} · {rule.action}
+                    {accountEmail(rule.account)} · {actionLabel(rule)}
                     {rule.target_folder ? ` to ${rule.target_folder}` : ""}
                   </small>
                 </span>
@@ -453,10 +460,22 @@ export function RulesClient({
                 value={editor.action}
                 onChange={(event) => setEditor({ ...editor, action: event.target.value, target_folder: "" })}
               >
+                <option value="mark_read">Mark as read</option>
                 <option value="archive">Archive</option>
                 <option value="move">Move to {destinationNoun(editor.account)}</option>
                 <option value="delete">Delete</option>
               </select>
+              {editor.action !== "mark_read" && (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(editor.mark_read)}
+                    onChange={(event) => setEditor({ ...editor, mark_read: event.target.checked })}
+                  />
+                  Mark as read before{" "}
+                  {editor.action === "move" ? "moving" : editor.action === "archive" ? "archiving" : "deleting"}
+                </label>
+              )}
             </div>
             <div className="field-wide">
               <Label>Filter query</Label>
@@ -546,6 +565,12 @@ export function RulesClient({
           Approval creates an audited proposal and immediately applies this one run. The saved flow itself never runs
           automatically.
         </p>
+        {proposal?.rule?.actions?.length > 1 && (
+          <p className="muted">
+            Steps run in order. Read status may change even if the later move, archive, or delete fails. Review History
+            before retrying a partial run.
+          </p>
+        )}
         {proposal?.rule?.action === "delete" && (
           <p className="rule-delete-warning">
             <Trash2 size={15} />

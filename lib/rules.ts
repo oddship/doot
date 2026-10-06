@@ -1,5 +1,6 @@
 import { accountByName, db, json, now, queryMessages } from "@/lib/database";
 import { type FolderMutation, isProtectedMailbox, validateMailboxPath } from "@/lib/imap-folder";
+import { type MailAction, normalizeMailActions } from "@/lib/mail-actions";
 import { providerForHost } from "@/lib/mail-provider";
 
 export type EmailRule = {
@@ -7,7 +8,8 @@ export type EmailRule = {
   name: string;
   account: string;
   query: string;
-  action: "archive" | "move" | "delete";
+  action: MailAction;
+  actions: MailAction[];
   target_folder: string | null;
   status: "suggested" | "draft" | "active" | "paused";
   enabled: boolean;
@@ -19,7 +21,14 @@ export type EmailRule = {
 };
 
 function ruleRow(row: any): EmailRule | null {
-  return row ? { ...row, enabled: Boolean(row.enabled) } : null;
+  if (!row) return null;
+  const { actions_json, ...fields } = row;
+  const stored = json(actions_json, []);
+  return {
+    ...fields,
+    actions: normalizeMailActions(stored.length ? stored : undefined, row.action),
+    enabled: Boolean(row.enabled),
+  };
 }
 
 export function getRule(id: number) {
@@ -59,10 +68,13 @@ export function saveRule(value: any) {
   const query = String(value.query ?? existing?.query ?? "")
     .trim()
     .slice(0, 200);
-  const action = String(value.action ?? existing?.action ?? "archive");
+  const actions = normalizeMailActions(
+    value.actions !== undefined ? value.actions : value.action === undefined ? existing?.actions : undefined,
+    value.action ?? existing?.action ?? "archive",
+  );
+  const action = actions[actions.length - 1];
   const targetFolder = action === "move" ? String(value.target_folder ?? existing?.target_folder ?? "") : null;
-  if (!name || !query || !["archive", "move", "delete"].includes(action))
-    throw new Error("rule name, query, and action are required");
+  if (!name || !query) throw new Error("rule name, query, and action are required");
   if (account !== "all" && !accountByName(account)) throw new Error("unknown rule account");
   if (action === "move" && (account === "all" || !targetFolder || !knownMoveDestination(account, targetFolder))) {
     throw new Error("move flows require one account and a discovered selectable folder");
@@ -77,7 +89,7 @@ export function saveRule(value: any) {
   const timestamp = now();
   if (existing) {
     db.prepare(
-      "UPDATE email_rules SET name=?,account=?,query=?,action=?,target_folder=?,status=?,enabled=?,source=?,rationale=?,updated_at=? WHERE id=?",
+      "UPDATE email_rules SET name=?,account=?,query=?,action=?,target_folder=?,status=?,enabled=?,source=?,rationale=?,updated_at=?,actions_json=? WHERE id=?",
     ).run(
       name,
       account,
@@ -89,15 +101,29 @@ export function saveRule(value: any) {
       source,
       rationale,
       timestamp,
+      JSON.stringify(actions),
       id,
     );
     return getRule(id!);
   }
   const info = db
     .prepare(
-      "INSERT INTO email_rules(name,account,query,action,target_folder,status,enabled,source,rationale,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO email_rules(name,account,query,action,target_folder,status,enabled,source,rationale,created_at,updated_at,actions_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
     )
-    .run(name, account, query, action, targetFolder, status, Number(enabled), source, rationale, timestamp, timestamp);
+    .run(
+      name,
+      account,
+      query,
+      action,
+      targetFolder,
+      status,
+      Number(enabled),
+      source,
+      rationale,
+      timestamp,
+      timestamp,
+      JSON.stringify(actions),
+    );
   return getRule(Number(info.lastInsertRowid));
 }
 

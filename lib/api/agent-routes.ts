@@ -1,6 +1,6 @@
-import { listModels, updateRuntimeKey } from "@/lib/agent-runtime";
+import { cancelAgent, listModels, resumeInterruptedAgents, updateRuntimeKey } from "@/lib/agent-runtime";
 import type { ApiRouteHandler } from "@/lib/api/context";
-import { confirmedBody, requestBody } from "@/lib/api/context";
+import { confirmedBody, RouteError, requestBody } from "@/lib/api/context";
 import {
   cancelProviderLogin,
   getProviderLogin,
@@ -12,6 +12,15 @@ import {
 import { store } from "@/lib/store";
 
 export const handleAgentRoutes: ApiRouteHandler = async ({ request, path, key, method, url }) => {
+  if (key === "agent/recover" && method === "POST") {
+    const token = (globalThis as any).__dootSchedulerToken;
+    if (!token || request.headers.get("x-doot-scheduler-token") !== token) throw new RouteError("Forbidden", 403);
+    return Response.json(await resumeInterruptedAgents());
+  }
+  if (path[0] === "agent" && path[1] === "sessions" && path[2] && path[3] === "cancel" && method === "POST") {
+    await confirmedBody(request);
+    return Response.json(await cancelAgent(path[2]));
+  }
   if (key === "agent/sessions" && method === "GET") return Response.json(await store(["session-list"]));
   if (path[0] === "agent" && path[1] === "sessions" && path[2] && method === "GET")
     return Response.json(await store(["session-get", path[2]]));

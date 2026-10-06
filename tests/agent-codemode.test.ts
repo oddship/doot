@@ -212,11 +212,14 @@ describe("read-only codemode", () => {
 
   it("wires only the trusted inline extension and retains nested history identities", async () => {
     const source = await readFile("lib/agent-runtime.ts", "utf8");
-    expect(source).toContain("noExtensions: true");
-    expect(source).toContain("extensionFactories: [readOnlyCodemodeExtension]");
-    expect(source).toContain('noTools: "builtin"');
+    const adapter = await readFile("lib/agent-durable.ts", "utf8");
+    expect(source).toContain("openDurableAgent");
+    expect(source).not.toContain("createAgentSession");
+    expect(adapter).toContain("readOnlyCodemodeExtension({");
+    expect(adapter).not.toContain("CodingTools");
+    expect(adapter).not.toContain("NodeExecutionEnv");
+    expect(adapter).toContain('replay: "unsafe"');
     expect(source).toContain("].map(withCodemodePolicy)");
-    expect(source).toContain("await session.bindExtensions({})");
     expect(source).toContain("parent_tool_call_id: event.parentToolCallId");
   });
 });

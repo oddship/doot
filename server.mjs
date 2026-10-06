@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -17,10 +17,18 @@ try {
   const hasSessions = bootstrap
     .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_sessions'")
     .get();
-  if (hasSessions)
-    bootstrap
-      .prepare("UPDATE agent_sessions SET status='error',updated_at=?,error=? WHERE status='running'")
-      .run(new Date().toISOString(), "Application restarted before this run completed");
+  if (hasSessions) {
+    const interrupted = bootstrap.prepare("SELECT id FROM agent_sessions WHERE status='running'").all();
+    const finalize = bootstrap.prepare("UPDATE agent_sessions SET status='error',updated_at=?,error=? WHERE id=?");
+    for (const session of interrupted) {
+      const file = path.join(
+        `${databasePath}.agent-sessions`,
+        `${createHash("sha256").update(session.id).digest("hex")}.sqlite`,
+      );
+      if (!fs.existsSync(file))
+        finalize.run(new Date().toISOString(), "Application restarted before this legacy run completed", session.id);
+    }
+  }
   bootstrap.close();
 } catch (error) {
   console.error("Could not finalize interrupted Doot sessions:", error);
@@ -57,13 +65,20 @@ const close = (signal) => {
   console.log(`Received ${signal}; shutting down Doot.`);
   if (schedulerTimer) clearInterval(schedulerTimer);
   wss.close();
-  server.close(() => process.exit(0));
+  globalThis.__dootAgentsClosing = true;
+  const drained = new Promise((resolve) => server.close(resolve));
+  const agents = Promise.resolve().then(() => globalThis.__dootCloseAgents?.());
+  void Promise.allSettled([drained, agents]).then(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 };
 process.once("SIGINT", () => close("SIGINT"));
 process.once("SIGTERM", () => close("SIGTERM"));
 let schedulerTimer;
 const schedulerTick = () => {
+  void fetch(`http://${hostname}:${port}/api/agent/recover`, {
+    method: "POST",
+    headers: { "x-doot-scheduler-token": schedulerToken },
+  }).catch((error) => console.error("Agent recovery tick failed:", error.message));
   void fetch(`http://${hostname}:${port}/api/scheduler/tick`, {
     method: "POST",
     headers: { "x-doot-scheduler-token": schedulerToken },

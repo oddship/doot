@@ -2,10 +2,11 @@ import type { ApiRouteHandler } from "@/lib/api/context";
 import { confirmedBody, RouteError, requestBody } from "@/lib/api/context";
 import { startHistory } from "@/lib/history";
 import { sanitizeMessageHtml } from "@/lib/mail";
+import { mailActionLabel } from "@/lib/mail-actions";
 import { emitBackground, store } from "@/lib/store";
 import { getSyncJob, startSync } from "@/lib/sync";
 
-const ACTIONS = new Set(["archive", "move", "delete"]);
+const ACTIONS = new Set(["mark_read", "archive", "move", "delete"]);
 
 async function createProposal(request: Request, manual: boolean) {
   const value = await requestBody(request);
@@ -17,11 +18,12 @@ async function createProposal(request: Request, manual: boolean) {
     JSON.stringify(value.items),
     "--reason",
     String(value.reason || (manual ? "Manually selected in Inbox" : "")),
+    ...(value.actions !== undefined ? ["--actions", JSON.stringify(value.actions)] : []),
   ]);
   emitBackground({ type: "proposal.created", proposal });
   startHistory({
     kind: "action",
-    title: `Created ${manual ? "manual " : ""}${proposal.action} proposal`,
+    title: `Created ${manual ? "manual " : ""}${mailActionLabel(proposal)} proposal`,
     status: "ready",
     event_type: "proposal_created",
     content: `${proposal.items?.length || value.items?.length || 0} messages await review.`,

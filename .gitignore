@@ -11,6 +11,7 @@ coverage/
 email-cache.sqlite3
 email-cache.sqlite3-shm
 email-cache.sqlite3-wal
+*.agent-sessions/
 data/
 .env
 .env.*

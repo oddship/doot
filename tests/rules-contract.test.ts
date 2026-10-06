@@ -18,7 +18,7 @@ describe("first-class email flows", () => {
     expect(runtime).toContain('name: "email_suggest_flow"');
     expect(runtime).toContain('status: "suggested", enabled: false');
     expect(runtime).toContain("Validate the exact flow account/query");
-    expect(runtime).toContain('enum: ["archive", "move", "delete"]');
+    expect(runtime).toContain('enum: ["mark_read", "archive", "move", "delete"]');
   });
 
   it("lets a selected flow return to Agent for safe conversational edits", async () => {
@@ -37,7 +37,9 @@ describe("first-class email flows", () => {
     const rules = await readFile("lib/rules.ts", "utf8");
     const runtime = await readFile("lib/agent-runtime.ts", "utf8");
     const client = await readFile("components/rules-client.tsx", "utf8");
-    expect(rules).toContain('["archive", "move", "delete"]');
+    expect(rules).toContain("normalizeMailActions");
+    const actions = await readFile("lib/mail-actions.ts", "utf8");
+    expect(actions).toContain('["mark_read", "archive", "move", "delete"]');
     expect(runtime).toContain("Deletion may be recommended");
     expect(client).toContain("Delete flows remain manual");
     expect(client).toContain("Approve and run flow");

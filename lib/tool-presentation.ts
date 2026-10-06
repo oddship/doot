@@ -1,3 +1,5 @@
+import { mailActionLabel } from "@/lib/mail-actions";
+
 function detailsOf(result: any) {
   return result?.details && typeof result.details === "object" ? result.details : result;
 }
@@ -30,7 +32,8 @@ export function toolInputSummary(name: string, args: any = {}) {
     ].join(" · ");
   if (name === "email_facets")
     return `Analyze ${args.query || "the complete cache"}${args.account && args.account !== "all" ? ` · ${args.account}` : ""}`;
-  if (name === "email_suggest_flow") return `${args.action || "review"} · ${args.query || "flow pattern"}`;
+  if (name === "email_suggest_flow")
+    return `${args.action || args.actions?.length ? mailActionLabel({ ...args, action: args.action || args.actions.at(-1) }) : "review"} · ${args.query || "flow pattern"}`;
   if (name === "email_list_folders") return args.account || "Connected account";
   if (name === "email_request_body_access")
     return `${Array.isArray(args.messages) ? args.messages.length : 0} message(s) · ${args.reason || "approval needed"}`;
@@ -57,9 +60,10 @@ export function toolResultSummary(name: string, result: any, isError = false) {
     return `${Number(value.total || 0).toLocaleString()} analyzed · ${(value.top_senders || []).length} sender groups · ${(value.accounts || []).length} accounts`;
   if (name === "email_list_folders")
     return `${(value.folders || []).length} ${value.provider === "gmail" ? "labels" : "folders"} discovered`;
-  if (name === "email_suggest_flow") return `Disabled flow saved · ${value.name || "ready for review"}`;
+  if (name === "email_suggest_flow")
+    return `Disabled flow saved · ${value.name || "ready for review"}${value.action ? ` · ${mailActionLabel(value)}` : ""}`;
   if (name === "email_propose_organization")
-    return `Proposal ${value.id || ""} created · ${(value.items || []).length} messages`;
+    return `Proposal ${value.id || ""} created · ${(value.items || []).length} messages${value.action ? ` · ${mailActionLabel(value)}` : ""}`;
   if (name === "render_workspace") return `Workspace ${value.workspace_id || ""} rendered`;
   if (name === "update_workspace") return `Dashboard updated · ${value.operations_applied || 0} changes`;
   if (name === "get_current_workspace") return `Loaded dashboard ${value.id || ""}`;
@@ -73,7 +77,8 @@ export function toolResultSummary(name: string, result: any, isError = false) {
   if (name === "email_list_flows") return `${value.total || 0} saved Flows · ${(value.flows || []).length} returned`;
   if (name === "email_get_flow")
     return `Flow ${value.id || ""} inspected${value.editable ? " · editable in this conversation" : " · select to edit"}`;
-  if (name === "email_update_selected_flow") return `Flow ${value.id || ""} updated · disabled for review`;
+  if (name === "email_update_selected_flow")
+    return `Flow ${value.id || ""} updated · disabled for review${value.action ? ` · ${mailActionLabel(value)}` : ""}`;
   if (name === "email_request_body_access")
     return `${(value.messages || []).length} message body request awaiting approval`;
   if (name === "memory_namespaces") return `${(value.namespaces || []).length} memory namespaces`;

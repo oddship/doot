@@ -80,6 +80,8 @@ Browser ── Next.js + React ── SQLite/FTS5
 
 Body reads are cache-first, coalesced, and batched while preserving `BODY.PEEK[]`; see [IMAP performance and timing metrics](docs/03-development/05-imap-performance.md). Canonical searches use lightweight key ranking, and facet/dashboard aggregates share work; see [local query performance](docs/03-development/06-query-performance.md). The Inbox also avoids redundant renders, reconnects, and stale requests; see [UI performance](docs/03-development/07-ui-performance.md).
 
+Flows support mark-as-read on its own or before archive/move/delete, with complete-plan review and partial-failure reporting. See the [Flow guide](docs/01-guide/04-flows.md). An isolated `npm run prototype:durable` evaluates restart/approval/cancellation recovery using a fake mailbox; see the [Pi Durable assessment](docs/03-development/08-durable-recovery.md). The live agent now uses Pi Durable for conversation transcripts, run context, and recovery; mailbox mutations remain outside the agent behind browser confirmation. See the [transition plan and operation](docs/03-development/09-durable-transition.md).
+
 One Node process owns Next.js, the Pi runtime, SQLite, IMAP operations, API routes, SSE, and WebSocket events. There is no Python service. See the [architecture guide](docs/03-development/01-architecture.md) and [codebase map](docs/03-development/02-codebase.md).
 
 ## Safety model

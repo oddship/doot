@@ -159,6 +159,23 @@ describe("approved body review", () => {
 });
 
 describe("conversation Flow management", () => {
+  it("updates the same owned Flow with a reviewed mark-read and move sequence", async () => {
+    const current = state();
+    current.createdFlowIds.add(original.id);
+    const result = await tool("email_update_selected_flow", current).execute("update", {
+      id: original.id,
+      actions: ["mark_read", "move"],
+      target_folder: "transactions",
+    });
+    expect(result.details).toMatchObject({
+      id: original.id,
+      action: "move",
+      actions: ["mark_read", "move"],
+      enabled: false,
+      status: "suggested",
+    });
+    expect(store.mock.calls.some(([args]) => args[0] === "rule-agent-suggest")).toBe(false);
+  });
   it("records creation ownership and allows an in-place partial edit on a later turn", async () => {
     const current = state();
     await tool("email_suggest_flow", current).execute("create", {

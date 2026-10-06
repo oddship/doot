@@ -15,6 +15,7 @@ import {
   selectSyncFolders,
   uidBatches,
 } from "@/lib/imap-sync";
+import { type MailAction, normalizeMailActions } from "@/lib/mail-actions";
 import { providerForConnection, providerForHost } from "@/lib/mail-provider";
 import { planMailboxSync } from "@/lib/sync-selection";
 
@@ -999,13 +1000,19 @@ async function specialMailbox(client: ImapFlow, specialUse: string, fallback: st
 }
 
 function requireApplied(value: unknown, operation: string) {
-  if (value === false) throw new Error(`${operation} was rejected by the IMAP server`);
+  if (value === false)
+    throw new Error(
+      `${operation} was not confirmed by the IMAP server; outcome may be unknown. Review before retrying`,
+    );
 }
 
 export async function applyMailboxAction(
-  action: "archive" | "move" | "delete",
+  action: MailAction,
   items: Array<{ account: string; uid: string; source_folder: string; folder?: string }>,
+  markRead = action === "mark_read",
 ) {
+  normalizeMailActions(undefined, action);
+  const marked: typeof items = [];
   const results: any[] = [],
     errors: any[] = [];
   const groups = new Map<string, typeof items>();
@@ -1030,7 +1037,38 @@ export async function applyMailboxAction(
             .get(accountName, sourceFolder) as { special_use?: string } | undefined
         )?.special_use;
         const sourceIsAllMail = provider === "gmail" && sourceSpecialUse === "\\All";
-        if (action === "archive") {
+        const checkpoint = db
+          .prepare("SELECT uid_validity FROM sync_state WHERE account=? AND folder=?")
+          .get(accountName, sourceFolder) as any;
+        if (
+          checkpoint?.uid_validity &&
+          client.mailbox &&
+          String(client.mailbox.uidValidity) !== String(checkpoint.uid_validity)
+        )
+          throw new Error("Mailbox UID validity changed; sync before applying actions");
+        if (markRead) {
+          requireApplied(
+            await client.messageFlagsAdd(
+              accountItems.map((item) => Number(item.uid)),
+              ["\\Seen"],
+              { uid: true, silent: true },
+            ),
+            "mark as read",
+          );
+          marked.push(...accountItems);
+        }
+        if (action === "mark_read") {
+          results.push(
+            ...accountItems.map((item) => ({
+              account: accountName,
+              uid: item.uid,
+              source_folder: sourceFolder,
+              cache_hidden: false,
+              marked_read: true,
+              ok: true,
+            })),
+          );
+        } else if (action === "archive") {
           const uids = accountItems.map((item) => Number(item.uid));
           if (provider === "gmail")
             requireApplied(
@@ -1111,7 +1149,40 @@ export async function applyMailboxAction(
   const updateLabels = db.prepare("UPDATE messages SET labels_json=? WHERE account=? AND folder=? AND uid=?");
   const selectLabels = db.prepare("SELECT labels_json FROM messages WHERE account=? AND folder=? AND uid=?");
   db.transaction(() => {
+    const find = db.prepare("SELECT flags_json,provider_id FROM messages WHERE account=? AND folder=? AND uid=?");
+    const sameMessage = db.prepare("SELECT folder,uid,flags_json FROM messages WHERE account=? AND provider_id=?");
+    const flagUpdate = db.prepare("UPDATE messages SET unread=0,flags_json=? WHERE account=? AND folder=? AND uid=?");
+    for (const item of marked) {
+      const row = find.get(item.account, item.source_folder, item.uid) as any;
+      const copies = row?.provider_id
+        ? (sameMessage.all(item.account, row.provider_id) as any[])
+        : [{ folder: item.source_folder, uid: item.uid, flags_json: row?.flags_json }];
+      for (const copy of copies)
+        flagUpdate.run(
+          JSON.stringify([...new Set([...json<string[]>(copy.flags_json, []), "\\Seen"])]),
+          item.account,
+          copy.folder,
+          copy.uid,
+        );
+      if (
+        !results.some(
+          (result) =>
+            result.account === item.account && result.source_folder === item.source_folder && result.uid === item.uid,
+        )
+      )
+        results.push({
+          account: item.account,
+          uid: item.uid,
+          source_folder: item.source_folder,
+          cache_hidden: false,
+          marked_read: true,
+          completed_actions: ["mark_read"],
+          ok: false,
+        });
+    }
     for (const result of results) {
+      if (action === "mark_read") continue;
+      if (!result.ok) continue;
       if (result.cache_hidden) hide.run(result.account, result.source_folder, result.uid);
       else {
         const row = selectLabels.get(result.account, result.source_folder, result.uid) as
@@ -1131,4 +1202,17 @@ export async function applyMailboxAction(
     }
   })();
   return { status: errors.length ? "partial_failure" : "applied", results, errors };
+}
+
+export async function applyMailboxActions(actions: MailAction[], items: Parameters<typeof applyMailboxAction>[1]) {
+  const plan = normalizeMailActions(actions);
+  const applied = await applyMailboxAction(plan[plan.length - 1], items, plan.includes("mark_read"));
+  return {
+    ...applied,
+    actions: plan,
+    results: applied.results.map((result) => ({
+      ...result,
+      completed_actions: result.ok ? plan : result.completed_actions || [],
+    })),
+  };
 }

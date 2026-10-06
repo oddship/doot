@@ -116,6 +116,18 @@ function openDatabase() {
     CREATE INDEX IF NOT EXISTS schedules_due ON schedules(enabled,next_run_at);
   `);
         connection.exec("DROP VIEW IF EXISTS canonical_messages");
+        for (const table of ["email_rules", "actions"]) {
+          const columns = connection.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+          if (!columns.some((column) => column.name === "actions_json"))
+            connection.exec(`ALTER TABLE ${table} ADD COLUMN actions_json TEXT NOT NULL DEFAULT '[]'`);
+        }
+
+        const eventColumns = connection.prepare("PRAGMA table_info(agent_events)").all() as Array<{ name: string }>;
+        if (!eventColumns.some((column) => column.name === "durable_key"))
+          connection.exec("ALTER TABLE agent_events ADD COLUMN durable_key TEXT");
+        connection.exec(
+          "CREATE UNIQUE INDEX IF NOT EXISTS agent_events_durable ON agent_events(session_id,durable_key)",
+        );
 
         let messageInfo = connection.prepare("PRAGMA table_info(messages)").all() as any[];
         const messageColumns = new Set(messageInfo.map((row) => row.name));

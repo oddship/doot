@@ -10,7 +10,7 @@ import {
 } from "@/lib/database";
 import { visibleUserPrompt } from "@/lib/history-display";
 import {
-  applyMailboxAction,
+  applyMailboxActions,
   closeAccountReadSessions,
   discoverAccountFolders,
   mutateAccountFolder,
@@ -21,6 +21,7 @@ import {
   warmMessageReader,
 } from "@/lib/imap";
 import { type FolderMutation, isProtectedMailbox } from "@/lib/imap-folder";
+import { normalizeMailActions, ruleActionFingerprint } from "@/lib/mail-actions";
 import { providerForHost } from "@/lib/mail-provider";
 import { messageFacets } from "@/lib/message-facets";
 import {
@@ -85,9 +86,20 @@ function dashboard() {
     .all();
   const actions = (
     db
-      .prepare("SELECT id,action,status,reason,items_json,created_at FROM actions ORDER BY id DESC LIMIT 10")
+      .prepare(
+        "SELECT id,action,actions_json,status,reason,items_json,created_at FROM actions ORDER BY id DESC LIMIT 10",
+      )
       .all() as any[]
-  ).map((row) => ({ ...row, items: json(row.items_json, []), items_json: undefined }));
+  ).map((row) => {
+    const { actions_json, ...fields } = row;
+    const stored = json(actions_json, []);
+    return {
+      ...fields,
+      actions: normalizeMailActions(stored.length ? stored : undefined, row.action),
+      items: json(row.items_json, []),
+      items_json: undefined,
+    };
+  });
   const view = db
     .prepare(
       "SELECT id,spec_json,created_at,schema_version,session_id FROM agent_views WHERE kind='organization' ORDER BY id DESC LIMIT 1",
@@ -308,12 +320,17 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
     case "rule-propose": {
       const id = Number(required(rest[0], "rule id is required"));
       const prepared = prepareRuleProposal(id);
+      const expected = option(rest, "--expected");
+      if (expected && expected !== ruleActionFingerprint(prepared.rule))
+        throw new Error("Flow changed since review; preview and confirm it again");
       const proposal = await store<any>([
         "propose",
         prepared.rule.action,
         JSON.stringify(prepared.items),
         "--reason",
         `Flow: ${prepared.rule.name}`,
+        "--actions",
+        JSON.stringify(prepared.rule.actions),
       ]);
       markRuleMatched(id, prepared.matched);
       result = { rule: prepared.rule, matched: prepared.matched, proposed: prepared.items.length, proposal };
@@ -685,7 +702,7 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
         metadata = value.metadata && typeof value.metadata === "object" ? value.metadata : {};
       db.transaction(() => {
         db.prepare(
-          "INSERT INTO agent_events(session_id,event_type,role,content,metadata_json,created_at) VALUES(?,?,?,?,?,?)",
+          "INSERT OR IGNORE INTO agent_events(session_id,event_type,role,content,metadata_json,created_at,durable_key) VALUES(?,?,?,?,?,?,?)",
         ).run(
           id,
           String(value.event_type || "event").slice(0, 80),
@@ -693,6 +710,7 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
           String(value.content || "").slice(0, 100_000),
           JSON.stringify(metadata),
           timestamp,
+          value.durable_key || null,
         );
         if (value.status)
           db.prepare("UPDATE agent_sessions SET status=?,updated_at=?,error=? WHERE id=?").run(
@@ -733,12 +751,17 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       const action = required(rest[0], "action is required"),
         items = parseValue<any[]>(rest[1]);
       if (
-        !["archive", "move", "delete"].includes(action) ||
+        !["mark_read", "archive", "move", "delete"].includes(action) ||
         !Array.isArray(items) ||
         !items.length ||
         items.length > 100
       )
         throw new Error("invalid action or items");
+      const plan = normalizeMailActions(
+        option(rest, "--actions") ? parseValue(option(rest, "--actions")) : undefined,
+        action,
+      );
+      if (plan[plan.length - 1] !== action) throw new Error("Proposal action does not match its action sequence");
       for (const item of items) {
         if (
           !item?.account ||
@@ -758,16 +781,23 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       }
       const reason = option(rest, "--reason");
       const info = db
-        .prepare("INSERT INTO actions(action,items_json,reason,created_at) VALUES(?,?,?,?)")
-        .run(action, JSON.stringify(items), reason, now());
-      result = { id: Number(info.lastInsertRowid), action, status: "proposed", items, reason };
+        .prepare("INSERT INTO actions(action,items_json,reason,created_at,actions_json) VALUES(?,?,?,?,?)")
+        .run(action, JSON.stringify(items), reason, now(), JSON.stringify(plan));
+      result = { id: Number(info.lastInsertRowid), action, actions: plan, status: "proposed", items, reason };
       break;
     }
     case "action-get": {
       const id = Number(required(rest[0], "proposal id is required"));
       const row = db.prepare("SELECT * FROM actions WHERE id=?").get(id) as any;
       if (!row) throw new Error("proposal not found");
-      result = { ...row, items: json(row.items_json, []), items_json: undefined };
+      const stored = json(row.actions_json, []);
+      result = {
+        ...row,
+        actions: normalizeMailActions(stored.length ? stored : undefined, row.action),
+        actions_json: undefined,
+        items: json(row.items_json, []),
+        items_json: undefined,
+      };
       break;
     }
     case "apply": {
@@ -777,7 +807,11 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       const items = json<any[]>(row.items_json, []);
       if (items.some((item) => typeof item?.source_folder !== "string" || !item.source_folder.trim()))
         throw new Error("this legacy proposal has no exact source folder; recreate it before applying");
-      const applied = await applyMailboxAction(row.action, items);
+      const stored = json(row.actions_json, []);
+      const applied = await applyMailboxActions(
+        normalizeMailActions(stored.length ? stored : undefined, row.action),
+        items,
+      );
       db.prepare("UPDATE actions SET status=?,applied_at=? WHERE id=?").run(applied.status, now(), id);
       result = { id, ...applied };
       break;

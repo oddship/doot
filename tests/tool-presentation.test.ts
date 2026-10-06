@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { compactEmailSearchResult, toolInputSummary, toolResultSummary } from "@/lib/tool-presentation";
 
 describe("Agent tool presentation", () => {
+  it("shows the complete ordered action plan in proposal and Flow summaries", () => {
+    const plan = { action: "move", actions: ["mark_read", "move"], target_folder: "transactions" };
+    expect(toolInputSummary("email_suggest_flow", { ...plan, query: "bank" })).toContain(
+      "Mark as read → Move to transactions",
+    );
+    for (const name of ["email_suggest_flow", "email_update_selected_flow", "email_propose_organization"])
+      expect(toolResultSummary(name, { details: plan })).toContain("Mark as read → Move to transactions");
+  });
   it("removes repetitive database-only fields from model search results", () => {
     const result = compactEmailSearchResult({
       messages: [
