@@ -14,6 +14,7 @@ export function SettingsClient({ initial }: { initial: any }) {
   const [accounts, setAccounts] = useState(initial.accounts);
   const [settings, setSettings] = useState(initial.settings);
   const [models, setModels] = useState(initial.models);
+  const [classifierModels, setClassifierModels] = useState<any[]>(initial.classifierModels || []);
   const [editor, setEditor] = useState<any>(null);
   const [notice, setNotice] = useState("");
   const [pendingAccountRemoval, setPendingAccountRemoval] = useState<string | null>(null);
@@ -102,6 +103,9 @@ export function SettingsClient({ initial }: { initial: any }) {
             <a className="session-link" href="#agent">
               Doot
             </a>
+            <a className="session-link" href="#classifier">
+              Classification
+            </a>
             <a className="session-link" href="#folders">
               Folders
             </a>
@@ -189,7 +193,13 @@ export function SettingsClient({ initial }: { initial: any }) {
             ))}
           </Card>
           <FolderManager accounts={accounts} initialFolders={initial.folders || []} />
-          <ProviderAuthManager initialProviders={initial.providers || []} onModels={setModels} />
+          <ProviderAuthManager
+            initialProviders={initial.providers || []}
+            onModels={(models, classifiers) => {
+              setModels(models);
+              setClassifierModels(classifiers);
+            }}
+          />
           <Card className="settings-section" id="agent">
             <h2>Doot model</h2>
             <div className="form-grid">
@@ -229,6 +239,50 @@ export function SettingsClient({ initial }: { initial: any }) {
                 </select>
               </div>
             </div>
+          </Card>
+          <Card className="settings-section" id="classifier">
+            <h2>Classification model</h2>
+            <p className="muted">
+              Choose a preferred model for structured judgments, separately from Doot’s conversation model.
+            </p>
+            <Label htmlFor="classifier-model">Model</Label>
+            <select
+              id="classifier-model"
+              value={
+                settings.classifier_provider && settings.classifier_model
+                  ? `${settings.classifier_provider}:${settings.classifier_model}`
+                  : ""
+              }
+              onChange={(event) => {
+                const model = classifierModels.find((item) => `${item.provider}:${item.id}` === event.target.value);
+                setSettings({
+                  ...settings,
+                  classifier_provider: model?.provider || "",
+                  classifier_model: model?.id || "",
+                });
+              }}
+            >
+              <option value="">No preference</option>
+              {settings.classifier_provider &&
+                settings.classifier_model &&
+                !classifierModels.some(
+                  (model) => model.provider === settings.classifier_provider && model.id === settings.classifier_model,
+                ) && (
+                  <option value={`${settings.classifier_provider}:${settings.classifier_model}`} disabled>
+                    {settings.classifier_provider} · {settings.classifier_model} · unavailable
+                  </option>
+                )}
+              {classifierModels.map((model) => (
+                <option key={`${model.provider}:${model.id}`} value={`${model.provider}:${model.id}`}>
+                  {model.provider} · {model.name}
+                </option>
+              ))}
+            </select>
+            {!classifierModels.length && <p className="muted">Connect a provider that offers classification models.</p>}
+            <p className="muted">
+              Doot automatically uses this model for email decisions and suggestions. With no preference, it chooses an
+              available classifier, preferring Jev Free.
+            </p>
           </Card>
           <MemoryManager initialNamespaces={initial.memoryNamespaces || []} />
           <Card className="settings-section" id="sync">

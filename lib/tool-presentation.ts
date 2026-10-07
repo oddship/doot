@@ -24,7 +24,7 @@ export function compactEmailSearchResult(result: any) {
 }
 
 export function toolInputSummary(name: string, args: any = {}) {
-  if (name === "codemode") return "Batch read-only header analysis";
+  if (name === "codemode") return "Investigate and classify available evidence";
   if (name === "email_search")
     return [
       args.account && args.account !== "all" ? args.account : "all accounts",

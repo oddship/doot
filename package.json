@@ -14,7 +14,7 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=22.19 <23"
+    "node": ">=23.11 <24"
   },
   "scripts": {
     "dev": "NODE_ENV=development node server.mjs",

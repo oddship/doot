@@ -938,6 +938,8 @@ export async function readMessages(refs: MessageBodyRef[]) {
                 }
                 metrics.parse_ms += performance.now() - parseStarted;
                 const cacheStarted = performance.now();
+                // Reserve the writer before reading the checkpoint. A deferred
+                // read snapshot cannot be upgraded if another connection commits.
                 db.transaction(() => {
                   assertUidValidity();
                   for (const row of parsedRows) {
@@ -947,7 +949,7 @@ export async function readMessages(refs: MessageBodyRef[]) {
                     )
                       throw new Error("message is no longer available in the synced mailbox cache");
                   }
-                })();
+                }).immediate();
                 metrics.cache_ms += performance.now() - cacheStarted;
               },
               metrics,
@@ -1148,6 +1150,8 @@ export async function applyMailboxAction(
   const hide = db.prepare("UPDATE messages SET present=0 WHERE account=? AND folder=? AND uid=?");
   const updateLabels = db.prepare("UPDATE messages SET labels_json=? WHERE account=? AND folder=? AND uid=?");
   const selectLabels = db.prepare("SELECT labels_json FROM messages WHERE account=? AND folder=? AND uid=?");
+  // Cache reconciliation reads flags/labels before writing them; reserve the
+  // writer first so concurrent sync/history writes cannot invalidate that read.
   db.transaction(() => {
     const find = db.prepare("SELECT flags_json,provider_id FROM messages WHERE account=? AND folder=? AND uid=?");
     const sameMessage = db.prepare("SELECT folder,uid,flags_json FROM messages WHERE account=? AND provider_id=?");
@@ -1200,7 +1204,7 @@ export async function applyMailboxAction(
         updateLabels.run(JSON.stringify([...labels]), result.account, result.source_folder, result.uid);
       }
     }
-  })();
+  }).immediate();
   return { status: errors.length ? "partial_failure" : "applied", results, errors };
 }
 

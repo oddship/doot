@@ -1,4 +1,10 @@
-import { cancelAgent, listModels, resumeInterruptedAgents, updateRuntimeKey } from "@/lib/agent-runtime";
+import {
+  cancelAgent,
+  listClassifierModels,
+  listModels,
+  resumeInterruptedAgents,
+  updateRuntimeKey,
+} from "@/lib/agent-runtime";
 import type { ApiRouteHandler } from "@/lib/api/context";
 import { confirmedBody, RouteError, requestBody } from "@/lib/api/context";
 import {
@@ -24,7 +30,10 @@ export const handleAgentRoutes: ApiRouteHandler = async ({ request, path, key, m
   if (key === "agent/sessions" && method === "GET") return Response.json(await store(["session-list"]));
   if (path[0] === "agent" && path[1] === "sessions" && path[2] && method === "GET")
     return Response.json(await store(["session-get", path[2]]));
-  if (key === "agent/models" && method === "GET") return Response.json({ models: await listModels() });
+  if (key === "agent/models" && method === "GET") {
+    const [models, classifier_models] = await Promise.all([listModels(), listClassifierModels()]);
+    return Response.json({ models, classifier_models });
+  }
   if (key === "agent/auth/providers" && method === "GET") return Response.json(await listProviderAuth());
   if (key === "agent/auth/login" && method === "POST") {
     const value = await requestBody(request);

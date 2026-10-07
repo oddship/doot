@@ -16,9 +16,13 @@ import { MarkdownContent } from "@/components/markdown-content";
 import { Badge, Button } from "@/components/ui";
 import { consumeAgentHandoff } from "@/lib/client-agent-handoff";
 import {
+  applyConversationToolEvent,
   clearConversationSnapshot,
   loadConversationSnapshot,
+  type ReadApproval,
+  replayLastTurn,
   saveConversationSnapshot,
+  type WorkspaceEntry,
 } from "@/lib/client-conversation";
 import {
   DRAFT_SELECTION_EVENT,
@@ -47,24 +51,7 @@ import {
   selectedMessageId,
 } from "@/lib/client-selection";
 
-type ReadApproval = {
-  id: string;
-  reason: string;
-  scope?: { account: string; query: string; total: number };
-  messages: Array<{ account: string; uid: string; folder?: string; sender?: string; subject?: string }>;
-  status?: "pending" | "approved" | "denied";
-};
-
-export type WorkspaceEntry = {
-  role?: "user" | "assistant" | "system";
-  text?: string;
-  reasoning?: string;
-  tools?: Array<{ id: string; name: string; state: "running" | "complete" | "error"; detail?: string }>;
-  status?: { status: string; detail: string };
-  artifact?: any;
-  rule?: any;
-  readApproval?: ReadApproval;
-};
+export type { WorkspaceEntry } from "@/lib/client-conversation";
 
 export type AgentModelSummary = {
   provider?: string;
@@ -107,80 +94,6 @@ function ArtifactReviewLink({ href, label, tooltip }: { href: string; label: str
   );
 }
 
-function replayLastTurn(entries: WorkspaceEntry[], data: any): WorkspaceEntry[] {
-  const events = Array.isArray(data?.events) ? data.events : [];
-  let promptIndex = -1;
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    if (events[index]?.event_type === "user_prompt") {
-      promptIndex = index;
-      break;
-    }
-  }
-  const turn = promptIndex >= 0 ? events.slice(promptIndex + 1) : events;
-  const text = turn
-    .filter((event: any) => event.event_type === "assistant_message" && event.content)
-    .map((event: any) => event.content)
-    .join("\n\n");
-  const reasoning = turn
-    .filter((event: any) => event.event_type === "reasoning" && event.content)
-    .map((event: any) => event.content)
-    .join("\n\n");
-  const tools = new Map<string, NonNullable<WorkspaceEntry["tools"]>[number]>();
-  turn.forEach((event: any, index: number) => {
-    if (event.event_type === "tool_start")
-      tools.set(`${event.content}-${index}`, {
-        id: `${event.content}-${index}`,
-        name: event.content,
-        state: "running",
-        detail: event.metadata?.args ? JSON.stringify(event.metadata.args) : undefined,
-      });
-    if (event.event_type === "tool_end") {
-      const match = [...tools.entries()]
-        .reverse()
-        .find(([, tool]) => tool.name === event.content && tool.state === "running");
-      if (match)
-        tools.set(match[0], {
-          ...match[1],
-          state: event.metadata?.is_error ? "error" : "complete",
-          detail: event.metadata?.summary || match[1].detail,
-        });
-    }
-  });
-  const status = data?.session?.status || "complete";
-  const bodyRequest = [...turn]
-    .reverse()
-    .find((event: any) => event.event_type === "body_read_requested" && event.metadata?.request)?.metadata?.request;
-  const next = [...entries];
-  let index = -1;
-  for (let candidate = next.length - 1; candidate >= 0; candidate -= 1) {
-    if (next[candidate]?.role === "assistant") {
-      index = candidate;
-      break;
-    }
-  }
-  if (index < 0) {
-    next.push({ role: "assistant" });
-    index = next.length - 1;
-  }
-  next[index] = {
-    ...next[index],
-    ...(text ? { text } : {}),
-    ...(reasoning ? { reasoning } : {}),
-    ...(tools.size ? { tools: [...tools.values()] } : {}),
-    ...(bodyRequest ? { readApproval: { ...bodyRequest, status: "pending" } } : {}),
-    status: {
-      status,
-      detail:
-        status === "running"
-          ? "Doot is continuing in the background…"
-          : status === "complete"
-            ? "Doot finished"
-            : data?.session?.error || "Doot run failed",
-    },
-  };
-  return next;
-}
-
 export function WorkspaceClient({
   initialWorkspace,
   initialEntries = [],
@@ -203,6 +116,8 @@ export function WorkspaceClient({
   const [agentModel, setAgentModel] = useState<AgentModelSummary | null>(initialModel || null);
   const [conversationReady, setConversationReady] = useState(false);
   const [conversationSessionId, setConversationSessionId] = useState<string | undefined>(undefined);
+  const streaming = useRef(false);
+  const turnGeneration = useRef(0);
   const session = useRef<string | undefined>(undefined);
   const setSessionId = (id: string | undefined) => {
     session.current = id;
@@ -273,6 +188,9 @@ export function WorkspaceClient({
       if (value.workspace?.compatible && value.workspace.spec) setWorkspace(value.workspace.spec);
     };
     const refreshRun = async () => {
+      if (streaming.current) return;
+      const requestedSession = session.current;
+      const requestedTurn = turnGeneration.current;
       let latest: any;
       let detail: any;
       if (session.current) {
@@ -289,7 +207,14 @@ export function WorkspaceClient({
           (item: any) => item.status === "running" && item.history_kind !== "job",
         );
       }
-      if (!latest || disposed) return;
+      if (
+        !latest ||
+        disposed ||
+        streaming.current ||
+        requestedSession !== session.current ||
+        requestedTurn !== turnGeneration.current
+      )
+        return;
       if (latest.model_provider && latest.model_id)
         setAgentModel({ provider: latest.model_provider, id: latest.model_id });
       if (latest.status === "running") {
@@ -337,7 +262,9 @@ export function WorkspaceClient({
     };
   }, [backgroundUpdates]);
   const run = async (text: string, organize = false) => {
-    if (running) return;
+    if (running || streaming.current) return;
+    streaming.current = true;
+    turnGeneration.current += 1;
     setRunning(true);
     setEntries((old) => [
       ...old,
@@ -397,21 +324,8 @@ export function WorkspaceClient({
             const current = { ...next[next.length - 1] };
             if (event.type === "text-delta") current.text = (current.text || "") + event.delta;
             if (event.type === "reasoning-delta") current.reasoning = (current.reasoning || "") + event.delta;
-            if (event.type === "tool-input-start")
-              current.tools = [
-                ...(current.tools || []),
-                { id: event.toolCallId, name: event.toolName, state: "running" as const, detail: event.inputSummary },
-              ];
-            if (event.type === "tool-output-available")
-              current.tools = (current.tools || []).map((tool) =>
-                tool.id === event.toolCallId
-                  ? {
-                      ...tool,
-                      state: event.isError ? ("error" as const) : ("complete" as const),
-                      detail: event.summary || tool.detail,
-                    }
-                  : tool,
-              );
+            if (event.type === "tool-input-start" || event.type === "tool-output-available")
+              current.tools = applyConversationToolEvent(current.tools || [], event);
             if (event.type === "data-status") current.status = event.data;
             if (event.type === "data-artifact") current.artifact = event.data;
             if (event.type === "data-rule") current.rule = event.data;
@@ -433,6 +347,7 @@ export function WorkspaceClient({
         return next;
       });
     } finally {
+      streaming.current = false;
       setRunning(false);
     }
   };
@@ -451,6 +366,7 @@ export function WorkspaceClient({
   };
   const newConversation = () => {
     if (running) return;
+    turnGeneration.current += 1;
     setSessionId(undefined);
     setEntries([]);
     setPrompt("");

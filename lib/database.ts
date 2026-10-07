@@ -316,6 +316,8 @@ export const DEFAULT_SETTINGS = {
   share_message_content: false,
   agent_provider: "",
   agent_model: "",
+  classifier_provider: "",
+  classifier_model: "",
   agent_thinking: "medium",
 } as const;
 

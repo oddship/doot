@@ -48,7 +48,7 @@ export function ProviderAuthManager({
   onModels,
 }: {
   initialProviders: Provider[];
-  onModels: (models: any[]) => void;
+  onModels: (models: any[], classifierModels: any[]) => void;
 }) {
   const toast = useToast();
   const [providers, setProviders] = useState(initialProviders);
@@ -64,10 +64,10 @@ export function ProviderAuthManager({
   const refresh = async () => {
     const [auth, models] = await Promise.all([
       apiJson<{ providers: Provider[] }>("/api/agent/auth/providers"),
-      apiJson<{ models: any[] }>("/api/agent/models"),
+      apiJson<{ models: any[]; classifier_models: any[] }>("/api/agent/models"),
     ]);
     setProviders(auth.providers);
-    onModels(models.models);
+    onModels(models.models, models.classifier_models || []);
   };
 
   useEffect(() => {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { expect, it } from "vitest";
+import { createClassifierRegistry, newClassifierBudget } from "@/lib/agent-classifier";
 import { openDurableAgent } from "@/lib/agent-durable";
 
 it("runs production Durable tools, retains transcript/approval budget across reopening, and keeps codemode bounded", async () => {
@@ -11,7 +12,32 @@ it("runs production Durable tools, retains transcript/approval budget across reo
   const faux = fauxProvider();
   const models = createModels();
   models.setProvider(faux.provider);
-  let state = { selected: [{ account: "fake", folder: "INBOX", uid: "1" }], used: 0 };
+  let state = {
+    selected: [{ account: "fake", folder: "INBOX", uid: "1" }],
+    used: 0,
+    classifierBudget: newClassifierBudget(),
+  };
+  const classifier = {
+    type: "classifier",
+    provider: "test",
+    id: "test-classifier",
+    api: "typesafe-system-one",
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  } as any;
+  const classifierRuntime = {
+    getAvailableOfType: async () => [classifier],
+    getModelsOfType: () => [classifier],
+    classify: async () =>
+      ({
+        api: classifier.api,
+        provider: classifier.provider,
+        model: classifier.id,
+        timestamp: 1,
+        stopReason: "stop",
+        answers: { match: { type: "bool", probability: 0.9 } },
+      }) as any,
+  };
   let session: Awaited<ReturnType<typeof openDurableAgent>> | undefined;
   const events: any[] = [];
   const tools = () => [
@@ -34,6 +60,7 @@ it("runs production Durable tools, retains transcript/approval budget across reo
       thinking: "off",
       prompt: "Use the tools safely.",
       tools,
+      classifiers: (audit) => createClassifierRegistry(classifierRuntime, {}, state.classifierBudget, undefined, audit),
       capture: () => state,
       restore: (value) => {
         state = value;
@@ -53,7 +80,7 @@ it("runs production Durable tools, retains transcript/approval budget across reo
       true,
     );
     await session.dispose();
-    state = { selected: [], used: 0 };
+    state = { selected: [], used: 0, classifierBudget: newClassifierBudget() };
     session = await open();
     expect(state.used).toBe(1);
     expect(state.selected[0].uid).toBe("1");
@@ -78,6 +105,32 @@ it("runs production Durable tools, retains transcript/approval budget across reo
     ]);
     await session.prompt("Try a forbidden script mutation");
     expect(state.used).toBe(2);
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("codemode", {
+            code: 'const [model] = await models.getAvailableOfType("classifier"); const r = await models.classify(model, {state: {topic:"databases"}, questions: {match: {type:"bool", instructions:"Is this about databases?", criteria:{true:"Databases",false:"Other"}}}}); store("match", r.answers); return r.answers;',
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([fauxText("Classified")]),
+    ]);
+    await session.prompt("Classify synthetic evidence");
+    expect(state.classifierBudget.calls).toBe(1);
+    expect(
+      events.some(
+        (event) =>
+          event.type === "tool_execution_end" &&
+          event.result?.content?.some((part: any) => part.text?.includes('"probability":0.9')),
+      ),
+    ).toBe(true);
+    await session.dispose();
+    state.classifierBudget = newClassifierBudget();
+    session = await open();
+    expect(state.classifierBudget.calls).toBe(1);
+    await session.recover();
+    expect(state.classifierBudget.calls).toBe(1);
   } finally {
     await session?.dispose();
     rmSync(directory, { recursive: true, force: true });

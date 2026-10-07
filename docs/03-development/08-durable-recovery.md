@@ -4,7 +4,7 @@ This document records the isolated evaluation that preceded the live agent trans
 
 ## Tested prototype
 
-Run `npm run prototype:durable` on Node 22.19+ (Doot currently uses 22.23.2). Exact production dependencies pin Pi Durable, Pi AI, and Chord to 1.0.3. Durable's API is experimental and may change without notice. Node's SQLite backend also emits an experimental warning.
+Run `npm run prototype:durable` on Node 23.11+. Exact production dependencies pin Pi Durable, Pi AI, and Chord to 1.0.3. Durable's API is experimental and may change without notice. Node's SQLite backend also emits an experimental warning.
 
 `scripts/prototype-durable-recovery.mjs` uses the real Durable Harness, task checkpoints, memos, session documents, and SQLite storage. Separate child processes reopen temporary databases. Its only external effect appends a fake message-reference/action plan to a temporary journal. It imports no Doot mailbox/store/credential code, registers no real model providers, and cleans up its temporary directory.
 

@@ -619,7 +619,8 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
             ].includes(key)
           )
             value = Boolean(value);
-          else if (["agent_provider", "agent_model"].includes(key)) value = String(value).slice(0, 200);
+          else if (["agent_provider", "agent_model", "classifier_provider", "classifier_model"].includes(key))
+            value = String(value).slice(0, 200);
           else if (key === "sync_scope" && !["inbox", "recommended", "custom"].includes(String(value)))
             throw new Error("invalid sync scope");
           else if (key === "sync_folders") {

@@ -4,6 +4,7 @@
   grid-template-columns: minmax(360px, 42%) minmax(480px, 58%);
 }
 .agent-pane {
+  min-width: 0;
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
@@ -64,6 +65,8 @@
   gap: 5px;
 }
 .conversation {
+  min-height: 0;
+  min-width: 0;
   padding: 20px;
   overflow: auto;
   flex: 1;
@@ -87,12 +90,14 @@
   font-size: 20px;
 }
 .message {
+  overflow-wrap: anywhere;
   max-width: 88%;
   line-height: 1.55;
   padding: 12px 14px;
   border-radius: 12px;
 }
 .message-user {
+  margin-left: auto;
   align-self: flex-end;
   background: var(--ink);
   color: #fff;
@@ -138,6 +143,13 @@
 .tool-call p {
   margin: 2px 0 0;
   color: var(--muted);
+}
+.tool-call > div {
+  min-width: 0;
+}
+.tool-call > svg,
+.tool-icon {
+  flex-shrink: 0;
 }
 .tool-icon {
   width: 28px;

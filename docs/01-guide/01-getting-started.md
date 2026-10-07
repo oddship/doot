@@ -2,7 +2,7 @@
 
 ## Native Node
 
-Install Node.js 22 or 23, then:
+Install Node.js 23.11+, then:
 
 ```bash
 cp .env.example .env

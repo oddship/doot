@@ -1,19 +1,21 @@
 import { SettingsClient } from "@/components/settings-client";
-import { listModels } from "@/lib/agent-runtime";
+import { listClassifierModels, listModels } from "@/lib/agent-runtime";
 import { listProviderAuth } from "@/lib/provider-auth";
 import { store } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 export default async function SettingsPage() {
-  const [{ accounts }, { settings }, providers, artifacts, memory, folderCache, models] = await Promise.all([
-    store<any>(["accounts"]),
-    store<any>(["settings-get"]),
-    listProviderAuth(),
-    store<any>(["artifact-list"]),
-    store<any>(["memory-namespaces"]),
-    store<any>(["folder-cache"]),
-    listModels().catch(() => []),
-  ]);
+  const [{ accounts }, { settings }, providers, artifacts, memory, folderCache, models, classifierModels] =
+    await Promise.all([
+      store<any>(["accounts"]),
+      store<any>(["settings-get"]),
+      listProviderAuth(),
+      store<any>(["artifact-list"]),
+      store<any>(["memory-namespaces"]),
+      store<any>(["folder-cache"]),
+      listModels().catch(() => []),
+      listClassifierModels().catch(() => []),
+    ]);
   return (
     <SettingsClient
       initial={{
@@ -24,6 +26,7 @@ export default async function SettingsPage() {
         memoryNamespaces: memory.namespaces,
         folders: folderCache.folders,
         models,
+        classifierModels,
       }}
     />
   );

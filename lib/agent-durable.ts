@@ -5,7 +5,7 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { type Models, validateToolArguments } from "@earendil-works/pi-ai";
 import { createRegistry, defineDoc, defineExtension, Harness, section, watchEvents } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { readOnlyCodemodeExtension } from "@/lib/agent-codemode";
+import { createReadOnlyCodemodeExtension, readOnlyCodemodeExtension } from "@/lib/agent-codemode";
 
 const RunContext = defineDoc<{ value: any; scripts: any[] }>({
   kind: "doot.run-context",
@@ -35,6 +35,7 @@ export async function openDurableAgent(options: {
   restore: (value: any) => void;
   legacy?: Array<{ role?: string; event_type: string; content: string }>;
   storagePath?: string;
+  classifiers?: (audit: (entry: unknown) => void) => Promise<unknown>;
 }) {
   let root: any;
   const listeners = new Set<(event: any) => void>();
@@ -71,7 +72,7 @@ export async function openDurableAgent(options: {
   tools.push({
     name: "codemode",
     description:
-      "Run bounded read-only JavaScript with tools.<name>(args). No shell, network, mutation, model, or image APIs. Use Promise.allSettled for independent reads; return compact results.",
+      "Run bounded read-only JavaScript with tools.<name>(args). Use Promise.allSettled for independent reads; return compact results. Classify with the user's configured model: const [model] = await models.getAvailableOfType('classifier'); if (!model) throw new Error('Choose a classification model in Settings'); const r = await models.classify(model, {state: {evidence: ...}, questions: {your_question: {type: 'choice', instructions: 'Your task-specific question', criteria: {your_label: 'Meaning', uncertain: 'Insufficient evidence'}}}}); if (r.stopReason !== 'stop') throw new Error(r.errorMessage || r.stopReason); return {model: model.id, answers: r.answers}; Questions support choice (criteria object mapping labels to meanings), bool (criteria {true: 'Meaning', false: 'Meaning'}), and score (criteria is an array of strings, lowest first, e.g. ['Not useful', 'Somewhat useful', 'Very useful']; never objects). Answers are under r.answers[questionId]: choice returns {type, choice, probabilities, confidence}; bool returns {type, probability}; score returns {type, score, confidence}. There is NO top-level r.probabilities. Return strict JSON: omit undefined properties. Author state, questions, labels and rubrics freely for the task; use only available headers or approved excerpts. Include uncertainty where appropriate. Check stopReason before using answers. At most 12 questions and 32000 input characters per request; 40 classifier calls and 400000 input characters per run, four concurrent calls, 15 seconds per request. No shell, arbitrary network, mailbox mutations, chat calls, or image generation. No classifier model means use direct reasoning or explain how to configure one; never bypass the preference.",
     parameters: {
       type: "object",
       properties: { code: { type: "string" } },
@@ -81,7 +82,14 @@ export async function openDurableAgent(options: {
     replay: "unsafe",
     execute: async (args: any, api: any, ctx: any) => {
       const writes: any[] = [];
-      readOnlyCodemodeExtension({
+      const extension = options.classifiers
+        ? createReadOnlyCodemodeExtension(() =>
+            options.classifiers!((entry) =>
+              writes.push({ type: "custom", customType: "doot-classification", data: entry }),
+            ),
+          )
+        : readOnlyCodemodeExtension;
+      extension({
         registerTool: (tool: any) => {
           codemode = tool;
         },
@@ -130,7 +138,13 @@ export async function openDurableAgent(options: {
         await api.commit(async (tx: any) => {
           (await tx.doc(RunContext, api.conversationId)).scripts.push(...writes);
         }, ctx);
-      return { content: result.content, details: result.details, isError: result.isError };
+      await capture();
+      return {
+        content: result.content,
+        details: result.details,
+        isError: result.isError,
+        ...(result.usage ? { usage: result.usage } : {}),
+      };
     },
   });
   const registry = createRegistry();

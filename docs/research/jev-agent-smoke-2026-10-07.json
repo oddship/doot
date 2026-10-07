@@ -1,0 +1,34 @@
+{
+  "tools": [
+    {
+      "summary": "Read-only analysis completed",
+      "isError": false,
+      "output": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Script completed\nWall time 1.2 seconds\nOutput:\n"
+          },
+          {
+            "type": "text",
+            "text": "{\"model\":\"jev-1.13-free\",\"answers\":{\"relevance\":{\"type\":\"choice\",\"choice\":\"relevant\",\"probabilities\":{\"uncertain\":0,\"relevant\":1,\"unrelated\":0},\"confidence\":1},\"reply_requested\":{\"type\":\"bool\",\"probability\":0.03},\"usefulness\":{\"type\":\"score\",\"score\":1.48,\"confidence\":0.23}}}"
+          }
+        ],
+        "details": {
+          "calls": [
+            {
+              "id": "call_c1eed1ead34e4c4d8ab3750aa8f5853d|fc_06a5758a0ceeb839016ac667a6848881918d9f755b1738e2bf/models.classify/1",
+              "name": "models.classify",
+              "args": "opencode/jev-1.13-free",
+              "status": "ok",
+              "durationMs": 1204.074385,
+              "cost": 0
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "answer": "{\"model\":\"jev-1.13-free\",\"answers\":{\"relevance\":{\"type\":\"choice\",\"choice\":\"relevant\",\"probabilities\":{\"uncertain\":0,\"relevant\":1,\"unrelated\":0},\"confidence\":1},\"reply_requested\":{\"type\":\"bool\",\"probability\":0.03},\"usefulness\":{\"type\":\"score\",\"score\":1.48,\"confidence\":0.23}}}"
+}

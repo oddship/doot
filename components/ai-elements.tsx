@@ -1,12 +1,26 @@
 "use client";
 import { Brain, CheckCircle2, LoaderCircle, Paperclip, Send, Wrench, XCircle } from "lucide-react";
 import Image from "next/image";
-import type { FormEvent, ReactNode } from "react";
+import { type FormEvent, type ReactNode, useLayoutEffect, useRef } from "react";
 import { Button, Card, cn, Textarea } from "@/components/ui";
 
 export function Conversation({ children }: { children: ReactNode }) {
+  const container = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  useLayoutEffect(() => {
+    const element = container.current;
+    if (element && followLatest.current) element.scrollTop = element.scrollHeight;
+  }, [children]);
   return (
-    <div className="conversation" aria-live="polite">
+    <div
+      ref={container}
+      className="conversation"
+      aria-live="polite"
+      onScroll={() => {
+        const element = container.current;
+        if (element) followLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+      }}
+    >
       {children}
     </div>
   );

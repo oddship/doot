@@ -2,6 +2,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fake = vi.hoisted(() => ({
@@ -169,6 +170,42 @@ describe("confirmed Flow action sequences", () => {
 });
 
 describe("cache-first coalesced IMAP body reads", () => {
+  it("reserves the writer before validating UID validity so competing writes cannot invalidate the body snapshot", async () => {
+    seed(1);
+    const competitor = new Database(process.env.DOOT_DATABASE_PATH!, { timeout: 0 });
+    const prepare = db.prepare.bind(db);
+    let contention: string | undefined;
+    const spy = vi.spyOn(db, "prepare").mockImplementation((sql: string) => {
+      const statement = prepare(sql);
+      if (sql.startsWith("SELECT uid_validity")) {
+        const get = statement.get.bind(statement);
+        statement.get = (...args: any[]) => {
+          const result = get(...args);
+          if (db.inTransaction) {
+            try {
+              competitor.prepare("UPDATE settings SET value_json='31' WHERE key='sync_days'").run();
+            } catch (error: any) {
+              contention = error.code;
+            }
+          }
+          return result;
+        };
+      }
+      return statement;
+    });
+    try {
+      const result = await readMessages(refs(1));
+      expect(result.messages[0].body_text).toContain("Body INBOX 1");
+      expect(contention).toBe("SQLITE_BUSY");
+      expect(competitor.prepare("UPDATE settings SET value_json=value_json WHERE key='sync_days'").run().changes).toBe(
+        1,
+      );
+    } finally {
+      spy.mockRestore();
+      competitor.close();
+    }
+  });
+
   it("fetches five bodies in one mailbox lock with two commands, preserves order and unread state", async () => {
     seed(5);
     const result = await readMessages(refs(5));

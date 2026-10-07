@@ -215,7 +215,7 @@ describe("read-only codemode", () => {
     const adapter = await readFile("lib/agent-durable.ts", "utf8");
     expect(source).toContain("openDurableAgent");
     expect(source).not.toContain("createAgentSession");
-    expect(adapter).toContain("readOnlyCodemodeExtension({");
+    expect(adapter).toContain("createReadOnlyCodemodeExtension(");
     expect(adapter).not.toContain("CodingTools");
     expect(adapter).not.toContain("NodeExecutionEnv");
     expect(adapter).toContain('replay: "unsafe"');
