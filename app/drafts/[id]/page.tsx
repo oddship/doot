@@ -11,5 +11,5 @@ export default async function DraftPage({ params }: { params: Promise<{ id: stri
   const drafts = listDrafts().drafts;
   if (!drafts.some((draft) => draft.id === id)) notFound();
   const { accounts } = await store<any>(["accounts"]);
-  return <DraftsClient initialDrafts={drafts} accounts={accounts} initialFocus={id} />;
+  return <DraftsClient key={id} initialDrafts={drafts} accounts={accounts} initialFocus={id} />;
 }

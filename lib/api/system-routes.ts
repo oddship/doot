@@ -1,6 +1,7 @@
+import { ZodError } from "zod";
 import type { ApiRouteHandler } from "@/lib/api/context";
 import { RouteError, requestBody } from "@/lib/api/context";
-import { getAppState, setAppState } from "@/lib/app-state";
+import { getAppState, setAppStateRequest } from "@/lib/app-state";
 import { getBackgroundJob, listBackgroundJobs, recoverBackgroundJobs } from "@/lib/background-jobs";
 import { runDueSchedules } from "@/lib/schedules";
 import { store } from "@/lib/store";
@@ -10,7 +11,12 @@ export const handleSystemRoutes: ApiRouteHandler = async ({ request, key, method
   if (key === "app-state" && method === "GET") return Response.json({ state: getAppState() });
   if (key === "app-state" && method === "PUT") {
     const value = await requestBody(request);
-    return Response.json({ value: setAppState(value.key, value.value) });
+    try {
+      return Response.json({ value: setAppStateRequest(value) });
+    } catch (error) {
+      if (error instanceof ZodError) throw new RouteError("Invalid app state value", 400);
+      throw error;
+    }
   }
   if (key === "jobs" && method === "GET") return Response.json(listBackgroundJobs());
   if (path[0] === "jobs" && path[1] && method === "GET") return Response.json({ job: getBackgroundJob(path[1]) });

@@ -7,7 +7,7 @@ import { afterAll, expect, it } from "vitest";
 const dir = mkdtempSync(path.join(tmpdir(), "doot-app-state-"));
 process.env.DOOT_DATABASE_PATH = path.join(dir, "cache.sqlite");
 const { db } = await import("@/lib/database");
-const { getAppState, setAppState, getActiveConversationId } = await import("@/lib/app-state");
+const { getAppState, setAppState, getActiveConversationId, setAppStateRequest } = await import("@/lib/app-state");
 afterAll(() => {
   db.close();
   delete (globalThis as any).__emailAgentDatabase;
@@ -63,4 +63,12 @@ it("autosaves local draft edits in SQLite without uploading", () => {
   expect(JSON.parse(row.content_json).body).toBe("Saved locally");
   expect(row.status).toBe("draft");
   expect(db.prepare("SELECT COUNT(*) count FROM background_jobs").get()).toEqual({ count: 0 });
+});
+
+it("ignores out-of-order saves from the same document and hides revision markers", () => {
+  const edit = { key: "doot:agent-composer:v1", client_id: "2a60a607-19d6-4a14-8534-a212d68fb012" };
+  setAppStateRequest({ ...edit, value: "latest", revision: 2 });
+  expect(setAppStateRequest({ ...edit, value: "old", revision: 1 })).toEqual({ ignored: true });
+  expect(getAppState()[edit.key]).toBe("latest");
+  expect(Object.keys(getAppState()).some((key) => key.startsWith("ui-revision:"))).toBe(false);
 });

@@ -37,6 +37,7 @@ export default async function InboxPage({
   ]);
   return (
     <InboxClient
+      key={JSON.stringify([account, query, page, limit, openUid, openFolder])}
       accounts={accounts}
       initial={initial}
       initialAccount={account}

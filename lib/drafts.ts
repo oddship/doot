@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RouteError } from "@/lib/api/context";
 import { approveDraftUpload } from "@/lib/background-jobs";
 import { accountByName, db, json, now } from "@/lib/database";
 
@@ -67,19 +68,19 @@ export function getDraft(id: number) {
   const row = db
     .prepare("SELECT id,kind,title,content_json,status,created_at FROM agent_artifacts WHERE kind='draft' AND id=?")
     .get(id);
-  if (!row) throw new Error("draft not found");
+  if (!row) throw new RouteError("draft not found", 404);
   return { draft: rowValue(row) };
 }
 
 export function saveLocalDraft(value: unknown, id?: number) {
   const content = localDraftSchema.parse(value);
-  if (!accountByName(content.account)) throw new Error("unknown account");
+  if (!accountByName(content.account)) throw new RouteError("unknown account", 409);
   const title = (content.subject.trim() || `Draft to ${content.to[0] || "recipient"}`).slice(0, 200);
   if (id) {
     const info = db
       .prepare("UPDATE agent_artifacts SET title=?,content_json=?,status='draft' WHERE id=? AND kind='draft'")
       .run(title, JSON.stringify(content), id);
-    if (!info.changes) throw new Error("draft not found");
+    if (!info.changes) throw new RouteError("draft not found", 404);
     return getDraft(id).draft;
   }
   const info = db

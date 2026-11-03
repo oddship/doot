@@ -12,5 +12,5 @@ export default async function FlowPage({ params }: { params: Promise<{ id: strin
   const { rules, accounts, folders } = await loadFlowsPageData();
   if (!rules.some((rule: { id: number }) => rule.id === id)) notFound();
 
-  return <RulesClient initialRules={rules} accounts={accounts} folders={folders} initialFocus={id} />;
+  return <RulesClient key={id} initialRules={rules} accounts={accounts} folders={folders} initialFocus={id} />;
 }

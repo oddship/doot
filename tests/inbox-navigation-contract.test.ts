@@ -24,7 +24,7 @@ describe("Inbox deep links", () => {
   it("keeps interactive searches and account changes reflected in the URL", async () => {
     const source = await readFile("components/inbox-client.tsx", "utf8");
     expect(source).toContain("replaceClientUrl");
-    expect(source).toContain("load(0, value, query)");
+    expect(source).toContain("load(0, value, activeQuery)");
   });
 
   it("requires the Agent to validate generated Inbox queries", async () => {
@@ -44,8 +44,7 @@ describe("Inbox deep links", () => {
   it("can clear the persistent selection across all pages", async () => {
     const client = compactSource(await readFile("components/inbox-client.tsx", "utf8"));
     expect(client).toContain("Unselect all");
-    expect(client).toContain("saveSelectedIds([])");
-    expect(client).toContain("setSelected([])");
+    expect(client).toContain("updateSelected(() => [])");
   });
 
   it("moves a single-account selection to a discovered safe destination", async () => {
@@ -69,7 +68,7 @@ describe("Inbox deep links", () => {
     expect(client).toContain("aria-busy={applyingProposal}");
     expect(client).toContain("closeDisabled={applyingProposal}");
     expect(client).toContain("setOpen(null)");
-    expect(client).toContain('value.resource !== "messages"');
+    expect(client).toContain('["all", "messages"].includes(value.resource)');
   });
 
   it("can select the opened message or hand it to Doot for a reply", async () => {

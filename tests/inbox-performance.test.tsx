@@ -91,6 +91,23 @@ afterEach(async () => {
 });
 
 describe("responsive Inbox requests and rendering", () => {
+  it("clears the selection reference before the next checkbox toggle", async () => {
+    await render();
+    const toggle = async (index: number) =>
+      act(async () => {
+        container.querySelectorAll<HTMLInputElement>('.mail-item input[type="checkbox"]')[index].click();
+      });
+    await toggle(0);
+    await toggle(1);
+    const clear = [...container.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("Unselect all"),
+    )!;
+    await act(async () => clear.click());
+    await toggle(1);
+    const boxes = container.querySelectorAll<HTMLInputElement>('.mail-item input[type="checkbox"]');
+    expect(boxes[0].checked).toBe(false);
+    expect(boxes[1].checked).toBe(true);
+  });
   it("does not reconnect or rerender unchanged mail rows while typing a draft search", async () => {
     await render("from:sender@example.test");
     const renders = localTime.mock.calls.length;

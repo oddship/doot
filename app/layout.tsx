@@ -18,9 +18,15 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body>
         <FeedbackProvider>
-          <AppStateProvider state={getAppState()}>
-            <AppHeader />
-            <BackgroundJobStatus />
+          <AppStateProvider
+            state={getAppState()}
+            header={
+              <>
+                <AppHeader />
+                <BackgroundJobStatus />
+              </>
+            }
+          >
             {children}
           </AppStateProvider>
         </FeedbackProvider>

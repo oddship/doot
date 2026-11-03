@@ -63,14 +63,19 @@ const MailRow = memo(function MailRow({
         onChange={() => onToggle(mail)}
         onClick={(event) => event.stopPropagation()}
       />
-      <div>
+      <button
+        type="button"
+        className="mail-open"
+        aria-label={`Open ${mail.subject || "message"}`}
+        aria-pressed={active}
+      >
         <strong>{mail.sender}</strong>
-        <div className="subject">{mail.subject || "(no subject)"}</div>
+        <span className="subject">{mail.subject || "(no subject)"}</span>
         <small>
           {mail.account_email} · {mail.folder}
           {mail.body_fetched ? " · cached body" : ""}
         </small>
-      </div>
+      </button>
       <small>{mail.date ? <LocalTime value={mail.date} /> : ""}</small>
     </div>
   );
@@ -116,6 +121,7 @@ export function InboxClient({
   const [pageSize, setPageSize] = useState(initialLimit);
   const [data, setData] = useState(initial);
   const [selected, setSelected] = useState<string[]>([]);
+  const selectedRef = useRef<string[]>([]);
   const [open, setOpen] = useState<Mail | null>(null);
   const [detail, setDetail] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -125,17 +131,20 @@ export function InboxClient({
   const [moveLoading, setMoveLoading] = useState(false);
   const [renderMode, setRenderMode] = useState("Message");
   useEffect(() => {
-    const refresh = () => setSelected(loadSelectedIds());
+    const refresh = () => {
+      const ids = loadSelectedIds();
+      selectedRef.current = ids;
+      setSelected((old) => (old.join("\n") === ids.join("\n") ? old : ids));
+    };
     refresh();
     window.addEventListener("storage", refresh);
     return () => window.removeEventListener("storage", refresh);
   }, []);
   const updateSelected = useCallback((update: (current: string[]) => string[]) => {
-    setSelected((current) => {
-      const next = update(current);
-      saveSelectedIds(next);
-      return loadSelectedIds();
-    });
+    const next = update(selectedRef.current);
+    saveSelectedIds(next);
+    selectedRef.current = loadSelectedIds();
+    setSelected(selectedRef.current);
   }, []);
   const updateUrl = useCallback(
     (
@@ -202,7 +211,7 @@ export function InboxClient({
     }
   };
   useCacheEvents((value) => {
-    if (value.type !== "cache.refresh" || value.resource !== "messages") return;
+    if (value.type !== "cache.refresh" || !["all", "messages"].includes(value.resource)) return;
     const affected = new Set(
       (Array.isArray(value.items) ? value.items : [])
         .filter((item: any) => item.cache_hidden !== false)
@@ -453,7 +462,7 @@ export function InboxClient({
                 setLoading(false);
                 setDetail(null);
                 setOpen(null);
-                void load(0, value, query);
+                void load(0, value, activeQuery);
               }}
             >
               <option value="all">All accounts</option>
@@ -573,7 +582,7 @@ export function InboxClient({
                 onChange={(event) => {
                   const value = Number(event.target.value);
                   setPageSize(value);
-                  void load(0, account, query, value);
+                  void load(0, account, activeQuery, value);
                 }}
               >
                 {[25, 50, 100].map((value) => (
@@ -626,7 +635,12 @@ export function InboxClient({
               ) : (
                 <>
                   <div className="renderer-toolbar">
-                    <Tabs tabs={["Message", "Plain text"]} value={renderMode} onChange={setRenderMode} />
+                    <Tabs
+                      id="message-format"
+                      tabs={["Message", "Plain text"]}
+                      value={renderMode}
+                      onChange={setRenderMode}
+                    />
                     <div className="renderer-actions">
                       <Button
                         variant={openedSelected ? "default" : "outline"}
@@ -676,7 +690,12 @@ export function InboxClient({
                       <span>Remote images are blocked to protect your privacy.</span>
                     </div>
                   )}
-                  <div className="email-body-surface">
+                  <div
+                    className="email-body-surface"
+                    role="tabpanel"
+                    id={`message-format-panel-${renderMode === "Message" ? 0 : 1}`}
+                    aria-labelledby={`message-format-tab-${renderMode === "Message" ? 0 : 1}`}
+                  >
                     {renderMode === "Message" && detail?.body_html_sanitized ? (
                       <EmailFrame html={detail.body_html_sanitized} />
                     ) : (
@@ -723,8 +742,7 @@ export function InboxClient({
             variant="outline"
             tooltip="Clear the entire selection"
             onClick={() => {
-              saveSelectedIds([]);
-              setSelected([]);
+              updateSelected(() => []);
             }}
           >
             Unselect all

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RouteError } from "@/lib/api/context";
 import { db, json } from "@/lib/database";
 import { saveLocalDraft } from "@/lib/drafts";
 
@@ -35,28 +36,69 @@ export function getAppState() {
 }
 export function setAppState(key: string, value: unknown) {
   const editor = /^doot:draft-editor:(\d+)$/.exec(key);
-  if (editor) return saveLocalDraft(value, Number(editor[1])).content;
-  if (!(key in schemas)) throw new Error("Unknown app state key");
+  if (editor) {
+    const content = saveLocalDraft(value, Number(editor[1])).content;
+    try {
+      globalThis.__emailAgentBroadcast?.({ type: "cache.refresh", resource: "drafts" });
+    } catch {
+      /* Views are optional. */
+    }
+    return content;
+  }
+  if (!Object.hasOwn(schemas, key)) throw new RouteError("Unknown app state key", 400);
   const parsed: any = schemas[key].parse(value);
   if (
     key === "email-agent:conversation:v1" &&
     parsed?.sessionId &&
     !db.prepare("SELECT 1 FROM agent_sessions WHERE id=? AND history_kind='agent'").get(parsed.sessionId)
   )
-    throw new Error("Conversation not found");
+    throw new RouteError("Conversation not found", 404);
   if (key === "email-agent:selected-messages:v1") {
     for (const id of parsed) {
       const [account, folder, uid, ...extra] = id.split("\u001f");
-      if (extra.length) throw new Error("Invalid selected reference");
+      if (extra.length) throw new RouteError("Invalid selected reference", 400);
       if (uid) reference.parse({ account, folder: folder || undefined, uid });
-      else if (!/^.+:\d+$/.test(id)) throw new Error("Invalid selected reference");
+      else if (!/^.+:\d+$/.test(id)) throw new RouteError("Invalid selected reference", 400);
     }
   }
   db.prepare(
     "INSERT INTO app_state(key,value_json) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",
   ).run(key, JSON.stringify(parsed));
+  try {
+    globalThis.__emailAgentBroadcast?.({ type: "cache.refresh", resource: "app-state" });
+  } catch {
+    /* A disconnected view cannot prevent a saved edit. */
+  }
   return parsed;
 }
 export function getActiveConversationId(): string | undefined {
   return (getAppState()["email-agent:conversation:v1"] as any)?.sessionId;
+}
+
+const versionedEdit = z.object({
+  key: z.string().max(200),
+  value: z.unknown(),
+  client_id: z.uuid(),
+  revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+});
+export function setAppStateRequest(input: any) {
+  if (input.client_id === undefined) return setAppState(input.key, input.value);
+  const edit = versionedEdit.parse(input);
+  return db
+    .transaction(() => {
+      const marker = `ui-revision:${edit.client_id}:${edit.key}`;
+      const old = db.prepare("SELECT value_json FROM app_state WHERE key=?").get(marker) as any;
+      const saved = json<any>(old?.value_json, {});
+      if ((saved.revision || 0) >= edit.revision) return { ignored: true };
+      setAppState(edit.key, edit.value);
+      db.prepare(
+        "INSERT INTO app_state(key,value_json) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",
+      ).run(marker, JSON.stringify({ revision: edit.revision, updatedAt: Date.now() }));
+      if (!old)
+        db.prepare(
+          "DELETE FROM app_state WHERE key LIKE 'ui-revision:%' AND json_extract(value_json,'$.updatedAt')<?",
+        ).run(Date.now() - 30 * 86400000);
+      return { saved: true };
+    })
+    .immediate();
 }

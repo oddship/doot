@@ -7,5 +7,5 @@ export default async function HistoryDetail({ params }: { params: Promise<{ id: 
   const metadata = Object.assign({}, ...data.events.map((event: any) => event.metadata || {}));
   const proposalId = data.job?.source?.proposal_id || metadata.proposal_id;
   const proposal = proposalId ? await store<any>(["action-get", String(proposalId)]).catch(() => null) : null;
-  return <HistoryDetailView initialData={data} initialProposal={proposal} />;
+  return <HistoryDetailView key={id} initialData={data} initialProposal={proposal} />;
 }

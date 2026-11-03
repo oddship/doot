@@ -1,7 +1,7 @@
 "use client";
 
 import { Bot, FilePlus2, Save, SendToBack, Trash2 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { Badge, Button, Card, Input, Label, Textarea } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
@@ -54,6 +54,8 @@ export function DraftsClient({
   const active = useMemo(() => drafts.find((draft) => draft.id === activeId), [drafts, activeId]);
 
   const saveVersion = useRef(0);
+  const saveNoticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(saveNoticeTimer.current), []);
   const [saveState, setSaveState] = useState("Saved locally");
   const updateEditor = (content: Draft["content"]) => {
     if (!active) return;
@@ -68,13 +70,22 @@ export function DraftsClient({
     setSaveState("Saving locally…");
     const version = ++saveVersion.current;
     writeAppState(`doot:draft-editor:${active.id}`, content);
-    void flushAppStateWrites()
-      .then(() => {
-        if (saveVersion.current === version) setSaveState("Saved locally");
-      })
-      .catch(() => {
-        if (saveVersion.current === version) setSaveState("Local save failed: retry");
-      });
+    clearTimeout(saveNoticeTimer.current);
+    saveNoticeTimer.current = setTimeout(() => {
+      void flushAppStateWrites({ notify: false })
+        .then(() => {
+          if (saveVersion.current === version)
+            setSaveState(
+              hasPendingAppStateWrite(`doot:draft-editor:${active.id}`) ? "Not saved locally" : "Saved locally",
+            );
+        })
+        .catch(() => {
+          if (saveVersion.current === version)
+            setSaveState(
+              hasPendingAppStateWrite(`doot:draft-editor:${active.id}`) ? "Not saved locally" : "Saved locally",
+            );
+        });
+    }, 200);
   };
   const select = async (draft: Draft) => {
     try {
