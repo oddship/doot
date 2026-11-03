@@ -42,7 +42,7 @@ async function capture(name, route, prepare) {
 await capture("workspace", "/");
 await capture("inbox", "/inbox");
 await capture("inbox-message", "/inbox", async (page) => {
-  const message = page.locator(".mail-item").first();
+  const message = page.locator(".mail-open").first();
   if (await message.count()) {
     await message.click();
     await page.locator(".email-body-surface").waitFor();
