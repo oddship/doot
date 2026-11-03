@@ -3,15 +3,19 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import nextEnv from "@next/env";
 import Database from "better-sqlite3";
 import next from "next";
 import { WebSocketServer } from "ws";
-
-process.env.DOOT_INSTANCE_ID = randomUUID();
+import { createRequestPolicy, requestSecurityError } from "./lib/request-security.mjs";
 
 const dev = process.env.NODE_ENV !== "production";
+nextEnv.loadEnvConfig(process.cwd(), dev);
+process.env.DOOT_INSTANCE_ID = randomUUID();
+
 const hostname = process.env.DOOT_HOST || "127.0.0.1";
 const port = Number(process.env.DOOT_PORT || process.env.EMAIL_UI_PORT || 8765);
+const requestPolicy = createRequestPolicy();
 const databasePath = process.env.DOOT_DATABASE_PATH || path.join(process.cwd(), "email-cache.sqlite3");
 try {
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
@@ -46,7 +50,21 @@ const app = next({ dev, hostname, port });
 await app.prepare();
 const handle = app.getRequestHandler();
 const handleUpgrade = app.getUpgradeHandler();
-const server = http.createServer((request, response) => handle(request, response));
+const requestHeaders = (request) => ({
+  get: (name) => {
+    const value = request.headers[name];
+    return typeof value === "string" ? value : value ? value.join(", ") : null;
+  },
+});
+const server = http.createServer((request, response) => {
+  const error = requestSecurityError(requestHeaders(request), requestPolicy);
+  if (error) {
+    response.writeHead(403, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ error }));
+    return;
+  }
+  return handle(request, response);
+});
 const sockets = new Set();
 const schedulerToken = randomUUID();
 globalThis.__dootSchedulerToken = schedulerToken;
@@ -73,6 +91,10 @@ wss.on("connection", (socket) => {
   socket.on("error", () => sockets.delete(socket));
 });
 server.on("upgrade", (request, socket, head) => {
+  if (requestSecurityError(requestHeaders(request), requestPolicy, true)) {
+    socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+    return;
+  }
   const pathname = new URL(request.url || "/", `http://${hostname}:${port}`).pathname;
   if (dev && (pathname === "/_next/hmr" || pathname === "/_next/webpack-hmr")) {
     return void handleUpgrade(request, socket, head);

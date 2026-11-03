@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { enqueueAgentTurn, observeAgentJob } from "@/lib/agent-jobs";
+import { RouteError, requestBody } from "@/lib/api/context";
 import { createDetachedUIMessageStream } from "@/lib/ui-message-stream";
 
 export const runtime = "nodejs";
@@ -17,7 +18,7 @@ function lastUserText(messages: any[]) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = await requestBody(request);
     const text = String(body.text || lastUserText(body.messages) || "").trim();
     if (!text && !body.organize) return Response.json({ error: "A prompt is required" }, { status: 400 });
     const job = enqueueAgentTurn(
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Could not accept agent turn" },
-      { status: 400 },
+      { status: error instanceof RouteError ? error.status : 400 },
     );
   }
 }

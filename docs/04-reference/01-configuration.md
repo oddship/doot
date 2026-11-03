@@ -5,10 +5,15 @@
 | `DOOT_HOST` | `127.0.0.1` | HTTP bind address |
 | `DOOT_PORT` | `8765` | HTTP port |
 | `DOOT_DATABASE_PATH` | `./email-cache.sqlite3` | SQLite database path |
+| `DOOT_ALLOWED_ORIGINS` | empty | Comma-separated exact HTTP(S) origins for trusted reverse proxies |
 | `DOOT_BASE_URL` | `http://127.0.0.1:8765` | Base URL used by the UI audit |
 | `CHROMIUM_PATH` | Playwright browser | Optional system Chromium executable |
 
 `EMAIL_UI_PORT` remains a deprecated compatibility fallback for the port.
+
+HTTP requests require a trusted Host and, when supplied, a trusted Origin. WebSockets require both. Local HTTP origins for `127.0.0.1`, `localhost`, and `[::1]` on the configured port are trusted by default. A specific `DOOT_HOST` is also trusted; wildcard bind addresses do not trust arbitrary hosts. JSON request bodies must use `Content-Type: application/json`.
+
+For a private authenticated reverse proxy, set `DOOT_ALLOWED_ORIGINS` to its exact browser origin, for example `https://your-private-proxy.example`. Restart Doot after changing this setting. Wildcards, credentials, paths, query strings, and fragments are not accepted. Forwarded headers never establish trust. The proxy must preserve the browser Origin and use a trusted Host. This setting does not add authentication: keep Doot behind the proxy's access controls and do not expose it directly to an untrusted network.
 
 Account credentials, model-provider OAuth tokens or API keys, privacy behavior, sync limits, model, and reasoning settings are configured in the application and stored in SQLite. API responses redact stored secrets.
 
