@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { flushAppStateWrites } from "@/lib/client-app-state";
+import { navigateClient } from "@/lib/client-navigation";
 
 const items = [
   { href: "/", label: "Workspace", matches: (path: string) => path === "/" },
@@ -25,14 +27,13 @@ export function TopNav({ activePath, onNavigate }: { activePath?: string; onNavi
             href={item.href}
             className={active ? "active" : undefined}
             aria-current={active ? "page" : undefined}
-            onClick={
-              onNavigate
-                ? (event) => {
-                    event.preventDefault();
-                    onNavigate(item.href);
-                  }
-                : undefined
-            }
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              void flushAppStateWrites()
+                .then(() => (onNavigate ? onNavigate(item.href) : navigateClient(item.href)))
+                .catch(() => {});
+            }}
           >
             {item.label}
           </Link>

@@ -44,6 +44,19 @@ function openDatabase() {
       mailbox_unseen INTEGER, sync_days INTEGER, sync_limit INTEGER,
       PRIMARY KEY(account,folder));
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS background_jobs (
+      id TEXT PRIMARY KEY, kind TEXT NOT NULL, dedupe_key TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'queued', payload_json TEXT NOT NULL,
+      result_json TEXT, error TEXT, owner TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      history_id TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS background_steps (
+      job_id TEXT NOT NULL, position INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+      input_json TEXT NOT NULL, result_json TEXT, error TEXT,
+      PRIMARY KEY(job_id,position),
+      FOREIGN KEY(job_id) REFERENCES background_jobs(id) ON DELETE CASCADE);
+    CREATE INDEX IF NOT EXISTS background_jobs_status ON background_jobs(status,created_at);
     CREATE TABLE IF NOT EXISTS email_accounts (
       name TEXT PRIMARY KEY, host TEXT NOT NULL, username TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL, port INTEGER NOT NULL DEFAULT 993,

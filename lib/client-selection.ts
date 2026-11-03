@@ -1,3 +1,4 @@
+import { readAppState, writeAppState } from "@/lib/client-app-state";
 export type SelectedMessageRef = { account: string; uid: string; folder?: string };
 
 const STORAGE_KEY = "email-agent:selected-messages:v1";
@@ -24,7 +25,7 @@ export function selectedMessageRef(id: string): SelectedMessageRef | null {
 export function loadSelectedIds() {
   if (typeof window === "undefined") return [] as string[];
   try {
-    const values = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    const values = readAppState(STORAGE_KEY, []);
     return Array.isArray(values)
       ? [
           ...new Set(
@@ -40,7 +41,7 @@ export function loadSelectedIds() {
 export function saveSelectedIds(values: string[]) {
   if (typeof window === "undefined") return;
   const safe = [...new Set(values)].filter((value) => selectedMessageRef(value) !== null).slice(0, 100);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
+  writeAppState(STORAGE_KEY, safe);
   window.dispatchEvent(new CustomEvent(SELECTION_EVENT, { detail: safe }));
 }
 

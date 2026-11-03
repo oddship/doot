@@ -1,3 +1,4 @@
+import { readAppState, writeAppState } from "@/lib/client-app-state";
 export type SelectedSearchRef = { account: string; query: string };
 
 const STORAGE_KEY = "doot:selected-search:v1";
@@ -14,7 +15,7 @@ function validate(value: unknown): SelectedSearchRef | null {
 export function loadSelectedSearch(): SelectedSearchRef | null {
   if (typeof window === "undefined") return null;
   try {
-    return validate(JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"));
+    return validate(readAppState(STORAGE_KEY));
   } catch {
     return null;
   }
@@ -23,7 +24,6 @@ export function loadSelectedSearch(): SelectedSearchRef | null {
 export function saveSelectedSearch(value: SelectedSearchRef | null) {
   if (typeof window === "undefined") return;
   const next = validate(value);
-  if (next) localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  else localStorage.removeItem(STORAGE_KEY);
+  writeAppState(STORAGE_KEY, next);
   window.dispatchEvent(new CustomEvent(SEARCH_SELECTION_EVENT, { detail: next }));
 }
