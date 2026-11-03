@@ -1,4 +1,6 @@
 import { WorkspaceClient } from "@/components/workspace-client";
+import { getActiveConversationId } from "@/lib/app-state";
+import { replayConversation } from "@/lib/client-conversation";
 import { store } from "@/lib/store";
 import { generatedWorkspaceSchema } from "@/lib/workspace";
 
@@ -12,9 +14,23 @@ export default async function WorkspacePage() {
     if (result.workspace.schema_version === 1) initial = generatedWorkspaceSchema.parse(result.workspace.spec);
     else initial = { legacy: result.workspace.spec };
   } catch {}
+  const initialSessionId = getActiveConversationId();
+  let initialEntries: ReturnType<typeof replayConversation> = [];
+  if (initialSessionId) {
+    try {
+      initialEntries = replayConversation(await store(["session-get", initialSessionId]));
+    } catch {}
+  }
   const initialModel =
     settings.agent_provider && settings.agent_model
       ? { provider: settings.agent_provider, id: settings.agent_model }
       : { name: "Automatic" };
-  return <WorkspaceClient initialWorkspace={initial} initialModel={initialModel} />;
+  return (
+    <WorkspaceClient
+      initialWorkspace={initial}
+      initialModel={initialModel}
+      initialSessionId={initialSessionId}
+      initialEntries={initialEntries}
+    />
+  );
 }

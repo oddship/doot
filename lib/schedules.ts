@@ -1,7 +1,9 @@
-import { db, now } from "@/lib/database";
+import { enqueueBackgroundJob, kickBackgroundJobs } from "@/lib/background-jobs";
+import { db, json, now } from "@/lib/database";
 import { startHistory } from "@/lib/history";
-import { getRule } from "@/lib/rules";
-import { emitBackground, store } from "@/lib/store";
+import { createMailboxProposal } from "@/lib/proposals";
+import { getRule, markRuleMatched, prepareRuleProposal } from "@/lib/rules";
+import { emitBackground } from "@/lib/store";
 import { getSyncJob, startSync } from "@/lib/sync";
 
 export type ScheduleFrequency = "once" | "daily" | "weekly";
@@ -99,111 +101,87 @@ function nextOccurrence(frequency: ScheduleFrequency, scheduledFor: string) {
   return new Date(next).toISOString();
 }
 
-export async function runDueSchedules() {
-  const due = db
-    .prepare("SELECT id FROM schedules WHERE enabled=1 AND next_run_at<=? ORDER BY next_run_at LIMIT 20")
-    .all(new Date().toISOString()) as Array<{ id: number }>;
-  const results: any[] = [];
-  for (const item of due) {
-    let schedule: ReturnType<typeof getSchedule>;
-    try {
-      schedule = getSchedule(item.id);
-      const next = nextOccurrence(schedule.frequency as ScheduleFrequency, schedule.next_run_at);
-      db.prepare("UPDATE schedules SET enabled=?,last_run_at=?,next_run_at=?,updated_at=? WHERE id=?").run(
-        Number(Boolean(next)),
-        now(),
-        next || schedule.next_run_at,
-        now(),
-        schedule.id,
-      );
+export function runDueSchedules() {
+  const results = db
+    .transaction(() => {
+      const due = db
+        .prepare("SELECT * FROM schedules WHERE enabled=1 AND next_run_at<=? ORDER BY next_run_at LIMIT 20")
+        .all(new Date().toISOString()) as any[];
+      return due.map((schedule) => {
+        const job = enqueueBackgroundJob(
+          "schedule",
+          `schedule:${schedule.id}:${schedule.next_run_at}`,
+          { schedule },
+          [{ schedule }],
+          `Scheduled ${schedule.kind}`,
+        );
+        const next = nextOccurrence(schedule.frequency, schedule.next_run_at);
+        db.prepare("UPDATE schedules SET enabled=?,last_run_at=?,next_run_at=?,updated_at=? WHERE id=?").run(
+          Number(Boolean(next)),
+          now(),
+          next || schedule.next_run_at,
+          now(),
+          schedule.id,
+        );
+        return { id: schedule.id, job_id: job.id };
+      });
+    })
+    .immediate();
+  kickBackgroundJobs();
+  return { due: results.length, results };
+}
+
+export function executeScheduleOccurrence(schedule: any) {
+  return db
+    .transaction(() => {
+      const key = `schedule-result:${schedule.id}:${schedule.next_run_at}`;
+      const existing = db.prepare("SELECT value_json FROM app_state WHERE key=?").get(key) as any;
+      if (existing) return json(existing.value_json, {});
+      let result: any;
       if (schedule.kind === "sync") {
-        const activeSync = getSyncJob();
-        if (activeSync.status === "running") {
-          const historyId = startHistory({
-            kind: "schedule",
-            title: "Scheduled sync skipped · sync already running",
-            status: "complete",
-            event_type: "scheduled_sync_skipped",
-            content: "A sync job was already active, so Doot did not start a duplicate job.",
-            metadata: { schedule_id: schedule.id, active_sync_job_id: activeSync.id },
-          });
-          results.push({
-            id: schedule.id,
-            kind: schedule.kind,
-            skipped: true,
-            active_sync_job_id: activeSync.id,
-            history_id: historyId,
-          });
-        } else {
-          const sync = await startSync({ trigger: "schedule", scheduleId: schedule.id });
-          results.push({ id: schedule.id, kind: schedule.kind, sync_job_id: sync.id });
-        }
+        const active = getSyncJob();
+        result =
+          active.status === "running"
+            ? { skipped: true, reason: "sync already running", sync_job_id: active.id }
+            : {
+                sync_job_id: startSync({
+                  trigger: "schedule",
+                  scheduleId: schedule.id,
+                  commandId: `sync:schedule:${schedule.id}:${schedule.next_run_at}`,
+                }).id,
+              };
       } else {
-        const rule = getRule(schedule.rule_id!);
-        if (!rule.enabled) {
-          const historyId = startHistory({
-            kind: "flow",
-            title: `Scheduled Flow skipped · ${rule.name}`,
-            status: "complete",
-            event_type: "scheduled_flow_skipped",
-            content: "The Flow is paused, so no proposal was prepared.",
-            metadata: { schedule_id: schedule.id, flow_id: rule.id },
-          });
-          results.push({ id: schedule.id, kind: schedule.kind, skipped: true, history_id: historyId });
-        } else {
-          let prepared: any;
+        const rule = getRule(schedule.rule_id);
+        if (!rule.enabled) result = { skipped: true, reason: "Flow paused" };
+        else {
           try {
-            prepared = await store<any>(["rule-propose", String(rule.id)]);
-          } catch (error: any) {
-            if (!String(error?.message || error).includes("no current matches")) throw error;
-            const historyId = startHistory({
+            const prepared = prepareRuleProposal(rule.id);
+            const proposal = createMailboxProposal({
+              action: rule.action,
+              actions: rule.actions,
+              items: prepared.items,
+              reason: `Scheduled Flow: ${rule.name}`,
+              flowId: rule.id,
+            });
+            markRuleMatched(rule.id, prepared.matched);
+            startHistory({
               kind: "flow",
               title: `Scheduled Flow · ${rule.name}`,
-              status: "complete",
-              event_type: "scheduled_flow_no_matches",
-              content: "The Flow had no current matches, so there was nothing to review or apply.",
-              metadata: { schedule_id: schedule.id, flow_id: rule.id, matched: 0, proposed: 0 },
+              status: "ready",
+              event_type: "scheduled_flow_proposal",
+              content: `${prepared.items.length} of ${prepared.matched} matches prepared for review. No mailbox change was applied.`,
+              metadata: { schedule_id: schedule.id, flow_id: rule.id, proposal_id: proposal.id },
             });
-            results.push({ id: schedule.id, kind: schedule.kind, matched: 0, history_id: historyId });
-            continue;
+            result = { proposal_id: proposal.id, matched: prepared.matched, proposed: prepared.items.length };
+          } catch (error: any) {
+            if (!String(error?.message || error).includes("no current matches")) throw error;
+            result = { matched: 0, proposed: 0 };
           }
-          const historyId = startHistory({
-            kind: "flow",
-            title: `Scheduled Flow · ${rule.name}`,
-            status: "ready",
-            event_type: "scheduled_flow_proposal",
-            content: `${prepared.proposed} of ${prepared.matched} current matches prepared for review. No mailbox change was applied.`,
-            metadata: {
-              schedule_id: schedule.id,
-              flow_id: rule.id,
-              proposal_id: prepared.proposal.id,
-              matched: prepared.matched,
-              proposed: prepared.proposed,
-            },
-          });
-          emitBackground({ type: "proposal.created", proposal: prepared.proposal });
-          results.push({
-            id: schedule.id,
-            kind: schedule.kind,
-            proposal_id: prepared.proposal.id,
-            history_id: historyId,
-          });
         }
       }
-    } catch (error: any) {
-      const message = String(error?.message || error);
-      const historyId = startHistory({
-        kind: "schedule",
-        title: `Scheduled ${schedule?.kind || "job"} failed`,
-        status: "error",
-        event_type: "schedule_failed",
-        content: message,
-        metadata: { schedule_id: item.id },
-        error: message,
-      });
-      results.push({ id: item.id, error: message, history_id: historyId });
-    }
-  }
-  if (due.length) emitBackground({ type: "cache.refresh", resource: "history" });
-  return { due: due.length, results };
+      db.prepare("INSERT INTO app_state(key,value_json) VALUES(?,?)").run(key, JSON.stringify(result));
+      emitBackground({ type: "cache.refresh", resource: "history" });
+      return result;
+    })
+    .immediate();
 }

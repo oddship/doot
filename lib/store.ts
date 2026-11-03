@@ -1,3 +1,4 @@
+import { approveFolderMutation, approveProposal, getBackgroundJob } from "@/lib/background-jobs";
 import {
   accountByName,
   configuredAccounts,
@@ -10,10 +11,8 @@ import {
 } from "@/lib/database";
 import { visibleUserPrompt } from "@/lib/history-display";
 import {
-  applyMailboxActions,
   closeAccountReadSessions,
   discoverAccountFolders,
-  mutateAccountFolder,
   readMessage,
   readMessages,
   syncAccount,
@@ -24,15 +23,14 @@ import { type FolderMutation, isProtectedMailbox } from "@/lib/imap-folder";
 import { normalizeMailActions, ruleActionFingerprint } from "@/lib/mail-actions";
 import { providerForHost } from "@/lib/mail-provider";
 import { messageFacets } from "@/lib/message-facets";
+import { createMailboxProposal } from "@/lib/proposals";
 import {
   deleteRule,
   getRule,
-  knownMoveDestination,
   listRules,
   markRuleMatched,
   prepareRuleProposal,
   previewRule,
-  reconcileFolderRules,
   saveAgentSuggestedRule,
   saveRule,
 } from "@/lib/rules";
@@ -191,6 +189,22 @@ function workspaceGet(id: string) {
   return { workspace: { ...row, spec: json(row.spec_json, {}), spec_json: undefined } };
 }
 
+// Prepared activity follows its saved proposal even when approval was made from
+// another page. Agent conversations retain their own turn status.
+function resolvedHistoryStatus(session: any) {
+  if (session.history_kind === "agent" || session.status !== "ready") return session.status;
+  const action = db
+    .prepare(
+      "SELECT a.status FROM agent_events e JOIN actions a ON a.id=json_extract(e.metadata_json,'$.proposal_id') WHERE e.session_id=? ORDER BY e.id DESC LIMIT 1",
+    )
+    .get(session.id) as any;
+  return action
+    ? ({ applied: "complete", partial_failure: "needs_review", proposed: "ready" } as Record<string, string>)[
+        action.status
+      ] || action.status
+    : session.status;
+}
+
 function sessionGet(id: string) {
   const session = db.prepare("SELECT * FROM agent_sessions WHERE id=?").get(id) as any;
   if (!session) throw new Error("unknown session");
@@ -212,7 +226,16 @@ function sessionGet(id: string) {
     )
     .get(id) as any;
   const workspace = row ? { ...row, spec: json(row.spec_json, {}), spec_json: undefined } : null;
-  return { session, events: events.map(({ metadata_json: _discard, ...event }) => event), workspace };
+  const jobRow = db
+    .prepare("SELECT id FROM background_jobs WHERE history_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1")
+    .get(id) as any;
+  const job = jobRow ? getBackgroundJob(jobRow.id) : null;
+  return {
+    job,
+    session: { ...session, status: resolvedHistoryStatus(session) },
+    events: events.map(({ metadata_json: _discard, ...event }) => event),
+    workspace,
+  };
 }
 
 function validateMemory(namespace: string, key?: string) {
@@ -221,7 +244,11 @@ function validateMemory(namespace: string, key?: string) {
 }
 
 export function emitBackground(event: unknown) {
-  globalThis.__emailAgentBroadcast?.(event);
+  try {
+    globalThis.__emailAgentBroadcast?.(event);
+  } catch {
+    /* Saved state does not depend on a connected view. */
+  }
 }
 
 export async function store<T = any>(args: string[] = []): Promise<T> {
@@ -258,11 +285,9 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       const mutation = parseValue<FolderMutation>(rest[1]);
       if (!mutation || !["create", "rename", "delete"].includes(mutation.action))
         throw new Error("invalid folder operation");
-      const cached = db
-        .prepare("SELECT delimiter FROM imap_folders WHERE account=? AND path=?")
-        .get(account, mutation.path) as any;
-      result = await mutateAccountFolder(account, mutation);
-      reconcileFolderRules(account, mutation, cached?.delimiter || result.folders[0]?.delimiter || "/");
+      const commandId = required(option(rest, "--command-id"), "A stable approval command ID is required");
+      const job = approveFolderMutation(account, mutation, commandId);
+      result = { status: job.status, job };
       break;
     }
     case "folder-cache":
@@ -318,22 +343,24 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       break;
     }
     case "rule-propose": {
-      const id = Number(required(rest[0], "rule id is required"));
-      const prepared = prepareRuleProposal(id);
-      const expected = option(rest, "--expected");
-      if (expected && expected !== ruleActionFingerprint(prepared.rule))
-        throw new Error("Flow changed since review; preview and confirm it again");
-      const proposal = await store<any>([
-        "propose",
-        prepared.rule.action,
-        JSON.stringify(prepared.items),
-        "--reason",
-        `Flow: ${prepared.rule.name}`,
-        "--actions",
-        JSON.stringify(prepared.rule.actions),
-      ]);
-      markRuleMatched(id, prepared.matched);
-      result = { rule: prepared.rule, matched: prepared.matched, proposed: prepared.items.length, proposal };
+      result = db
+        .transaction(() => {
+          const id = Number(required(rest[0], "rule id is required"));
+          const prepared = prepareRuleProposal(id);
+          const expected = option(rest, "--expected");
+          if (expected && expected !== ruleActionFingerprint(prepared.rule))
+            throw new Error("Flow changed since review; preview and confirm it again");
+          const proposal = createMailboxProposal({
+            action: prepared.rule.action,
+            items: prepared.items,
+            actions: prepared.rule.actions,
+            reason: `Flow: ${prepared.rule.name}`,
+            flowId: id,
+          });
+          markRuleMatched(id, prepared.matched);
+          return { rule: prepared.rule, matched: prepared.matched, proposed: prepared.items.length, proposal };
+        })
+        .immediate();
       break;
     }
     case "sync": {
@@ -729,11 +756,12 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       result = {
         sessions: db
           .prepare(
-            `SELECT s.*,(SELECT COUNT(*) FROM agent_events e WHERE e.session_id=s.id) event_count,(SELECT content FROM agent_events e WHERE e.session_id=s.id AND e.event_type='user_prompt' ORDER BY e.id LIMIT 1) first_prompt FROM agent_sessions s ORDER BY s.updated_at DESC`,
+            `SELECT s.*,b.id job_id,b.kind job_kind,b.status job_status,(SELECT COUNT(*) FROM background_steps t WHERE t.job_id=b.id AND t.status='complete') completed_steps,(SELECT COUNT(*) FROM background_steps t WHERE t.job_id=b.id) total_steps,(SELECT COUNT(*) FROM agent_events e WHERE e.session_id=s.id) event_count,(SELECT content FROM agent_events e WHERE e.session_id=s.id AND e.event_type='user_prompt' ORDER BY e.id LIMIT 1) first_prompt FROM agent_sessions s LEFT JOIN background_jobs b ON b.id=(SELECT id FROM background_jobs WHERE history_id=s.id ORDER BY created_at DESC,rowid DESC LIMIT 1) ORDER BY s.updated_at DESC`,
           )
           .all()
           .map((session: any) => ({
             ...session,
+            status: resolvedHistoryStatus(session),
             first_prompt: visibleUserPrompt(session.first_prompt),
           })),
       };
@@ -743,48 +771,20 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       break;
     case "sessions-interrupt-running": {
       const info = db
-        .prepare("UPDATE agent_sessions SET status='error',updated_at=?,error=? WHERE status='running'")
+        .prepare(
+          "UPDATE agent_sessions SET status='error',updated_at=?,error=? WHERE status='running' AND history_kind='agent' AND NOT EXISTS (SELECT 1 FROM background_jobs b WHERE b.history_id=agent_sessions.id AND b.status IN ('queued','running'))",
+        )
         .run(now(), "Application restarted before this run completed");
       result = { interrupted: info.changes };
       break;
     }
     case "propose": {
-      const action = required(rest[0], "action is required"),
-        items = parseValue<any[]>(rest[1]);
-      if (
-        !["mark_read", "archive", "move", "delete"].includes(action) ||
-        !Array.isArray(items) ||
-        !items.length ||
-        items.length > 100
-      )
-        throw new Error("invalid action or items");
-      const plan = normalizeMailActions(
-        option(rest, "--actions") ? parseValue(option(rest, "--actions")) : undefined,
-        action,
-      );
-      if (plan[plan.length - 1] !== action) throw new Error("Proposal action does not match its action sequence");
-      for (const item of items) {
-        if (
-          !item?.account ||
-          !/^\d+$/.test(String(item.uid || "")) ||
-          typeof item.source_folder !== "string" ||
-          !item.source_folder.trim()
-        )
-          throw new Error("every action item requires an exact source folder");
-        if (
-          !db
-            .prepare("SELECT 1 FROM messages WHERE account=? AND folder=? AND uid=? AND present=1")
-            .get(item.account, item.source_folder, String(item.uid))
-        )
-          throw new Error("proposal contains a message that is not in the local cache");
-        if (action === "move" && (!item.folder || !knownMoveDestination(item.account, item.folder)))
-          throw new Error("move destination was not found as a selectable IMAP folder");
-      }
-      const reason = option(rest, "--reason");
-      const info = db
-        .prepare("INSERT INTO actions(action,items_json,reason,created_at,actions_json) VALUES(?,?,?,?,?)")
-        .run(action, JSON.stringify(items), reason, now(), JSON.stringify(plan));
-      result = { id: Number(info.lastInsertRowid), action, actions: plan, status: "proposed", items, reason };
+      result = createMailboxProposal({
+        action: required(rest[0], "action is required"),
+        items: parseValue<any[]>(rest[1]),
+        actions: option(rest, "--actions") ? parseValue(option(rest, "--actions")) : undefined,
+        reason: option(rest, "--reason"),
+      });
       break;
     }
     case "action-get": {
@@ -802,19 +802,7 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       break;
     }
     case "apply": {
-      const id = Number(required(rest[0], "proposal id is required")),
-        row = db.prepare("SELECT * FROM actions WHERE id=?").get(id) as any;
-      if (row?.status !== "proposed") throw new Error("action is missing or not pending");
-      const items = json<any[]>(row.items_json, []);
-      if (items.some((item) => typeof item?.source_folder !== "string" || !item.source_folder.trim()))
-        throw new Error("this legacy proposal has no exact source folder; recreate it before applying");
-      const stored = json(row.actions_json, []);
-      const applied = await applyMailboxActions(
-        normalizeMailActions(stored.length ? stored : undefined, row.action),
-        items,
-      );
-      db.prepare("UPDATE actions SET status=?,applied_at=? WHERE id=?").run(applied.status, now(), id);
-      result = { id, ...applied };
+      result = approveProposal(Number(required(rest[0], "proposal id is required")));
       break;
     }
     default:

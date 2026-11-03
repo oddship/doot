@@ -405,27 +405,10 @@ export function InboxClient({
         "Could not apply proposal",
       );
       setProposal(null);
-      const appliedIds = new Set(
-        (result.results || [])
-          .filter((item: any) => item.cache_hidden !== false)
-          .map((item: any) =>
-            selectedMessageId({ account: item.account, uid: String(item.uid), folder: item.source_folder }),
-          ),
+      toast.info(
+        "Mailbox work queued",
+        `Work continues in the app. View progress in History (${result.job?.total || 0} steps).`,
       );
-      updateSelected((current) => current.filter((id) => !appliedIds.has(id)));
-      const removedOpen = Boolean(open && appliedIds.has(selectedMessageId(open)));
-      if (removedOpen) {
-        reader.current = null;
-        bodies.current.cancel();
-        setLoading(false);
-        setOpen(null);
-        setDetail(null);
-      }
-      await load(offset, account, activeQuery, pageSize, removedOpen ? undefined : open?.uid, open?.folder);
-      if (result.status === "applied")
-        toast.success("Mailbox updated", `${result.results?.length || 0} message(s) updated.`);
-      else
-        toast.info("Mailbox partially updated", `${appliedIds.size} succeeded; ${result.errors?.length || 0} failed.`);
     } catch (error) {
       toast.error("Could not apply proposal", errorMessage(error, "Please try again."));
     } finally {
@@ -832,7 +815,7 @@ export function InboxClient({
         {applyingProposal && (
           <div className="mailbox-apply-status" role="status" aria-live="polite">
             <LoaderCircle className="spin" size={15} />
-            Updating the mailbox. Keep this dialog open…
+            Saving approval. Once queued, work continues in the app…
           </div>
         )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>

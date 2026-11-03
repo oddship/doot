@@ -11,10 +11,12 @@ import {
   TaskStatus,
   ToolCall,
 } from "@/components/ai-elements";
+import { useToast } from "@/components/feedback";
 import { WorkspaceBoundary } from "@/components/generated-workspace";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Badge, Button } from "@/components/ui";
 import { consumeAgentHandoff } from "@/lib/client-agent-handoff";
+import { flushAppStateWrites, readAppState, writeAppState } from "@/lib/client-app-state";
 import {
   applyConversationToolEvent,
   clearConversationSnapshot,
@@ -43,13 +45,7 @@ import {
   type SelectedSearchRef,
   saveSelectedSearch,
 } from "@/lib/client-search-selection";
-import {
-  loadSelectedIds,
-  loadSelectedRefs,
-  SELECTION_EVENT,
-  saveSelectedIds,
-  selectedMessageId,
-} from "@/lib/client-selection";
+import { loadSelectedRefs, SELECTION_EVENT } from "@/lib/client-selection";
 
 export type { WorkspaceEntry } from "@/lib/client-conversation";
 
@@ -98,13 +94,16 @@ export function WorkspaceClient({
   initialWorkspace,
   initialEntries = [],
   initialModel,
+  initialSessionId,
   backgroundUpdates = true,
 }: {
   initialWorkspace: any;
   initialEntries?: WorkspaceEntry[];
   initialModel?: AgentModelSummary | null;
+  initialSessionId?: string;
   backgroundUpdates?: boolean;
 }) {
+  const toast = useToast();
   const [workspace, setWorkspace] = useState(initialWorkspace?.legacy || initialWorkspace);
   const [entries, setEntries] = useState<WorkspaceEntry[]>(initialEntries);
   const [prompt, setPrompt] = useState("");
@@ -115,22 +114,25 @@ export function WorkspaceClient({
   const [selectedSearch, setSelectedSearch] = useState<SelectedSearchRef | null>(null);
   const [agentModel, setAgentModel] = useState<AgentModelSummary | null>(initialModel || null);
   const [conversationReady, setConversationReady] = useState(false);
-  const [conversationSessionId, setConversationSessionId] = useState<string | undefined>(undefined);
+  const [conversationSessionId, setConversationSessionId] = useState<string | undefined>(initialSessionId);
   const streaming = useRef(false);
   const turnGeneration = useRef(0);
-  const session = useRef<string | undefined>(undefined);
+  const session = useRef<string | undefined>(initialSessionId);
   const setSessionId = (id: string | undefined) => {
     session.current = id;
     setConversationSessionId(id);
   };
   useEffect(() => {
-    const saved = initialEntries.length ? null : loadConversationSnapshot();
+    const saved = initialSessionId || initialEntries.length ? null : loadConversationSnapshot();
     if (saved) {
       setEntries(saved.entries as WorkspaceEntry[]);
       setSessionId(saved.sessionId);
     }
     const handoff = consumeAgentHandoff();
-    if (handoff) setPrompt(handoff.prompt);
+    if (handoff) {
+      setPrompt(handoff.prompt);
+      writeAppState("doot:agent-composer:v1", handoff.prompt);
+    } else setPrompt(readAppState("doot:agent-composer:v1", ""));
     setConversationReady(true);
   }, []);
   useEffect(() => {
@@ -218,6 +220,7 @@ export function WorkspaceClient({
       if (latest.model_provider && latest.model_id)
         setAgentModel({ provider: latest.model_provider, id: latest.model_id });
       if (latest.status === "running") {
+        if (detail) setEntries((old) => replayLastTurn(old, detail));
         setSessionId(latest.id);
         setRunning(true);
         setEntries((old) =>
@@ -278,11 +281,13 @@ export function WorkspaceClient({
       },
     ]);
     try {
+      await flushAppStateWrites();
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
+          commandId: crypto.randomUUID(),
           organize,
           sessionId: session.current,
           selected: loadSelectedRefs(),
@@ -292,6 +297,7 @@ export function WorkspaceClient({
         }),
       });
       if (!response.ok || !response.body) throw new Error((await response.json()).error || "Doot request failed");
+      if (!organize) writeAppState("doot:agent-composer:v1", "");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -357,19 +363,29 @@ export function WorkspaceClient({
         entry.readApproval?.id === id ? { ...entry, readApproval: { ...entry.readApproval, status } } : entry,
       ),
     );
-  const approveRead = (request: ReadApproval) => {
-    saveSelectedIds([...request.messages.map(selectedMessageId), ...loadSelectedIds()]);
-    setReadApprovalStatus(request.id, "approved");
-    void run(
-      `I approved body access for the ${request.messages.length} requested message${request.messages.length === 1 ? "" : "s"}. This is an exact snapshot, not permission for future matches. Read the selected message${request.messages.length === 1 ? "" : "s"} using read-only codemode in bounded batches now and continue my task.`,
-    );
+  const decideRead = async (request: ReadApproval, approved: boolean) => {
+    if (!session.current) return;
+    try {
+      const response = await fetch(`/api/agent/sessions/${session.current}/body-approvals/${request.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved }),
+      });
+      if (!response.ok) throw new Error((await response.json()).error || "Could not save body approval");
+      setReadApprovalStatus(request.id, approved ? "approved" : "denied");
+      if (approved) setRunning(true);
+    } catch (error) {
+      toast.error("Could not save approval", error instanceof Error ? error.message : String(error));
+    }
   };
+  const approveRead = (request: ReadApproval) => void decideRead(request, true);
   const newConversation = () => {
     if (running) return;
     turnGeneration.current += 1;
     setSessionId(undefined);
     setEntries([]);
     setPrompt("");
+    writeAppState("doot:agent-composer:v1", "");
     setAgentModel(initialModel || null);
     clearConversationSnapshot();
   };
@@ -549,7 +565,7 @@ export function WorkspaceClient({
                               variant="outline"
                               tooltip="Continue without reading bodies"
                               disabled={running}
-                              onClick={() => setReadApprovalStatus(entry.readApproval!.id, "denied")}
+                              onClick={() => void decideRead(entry.readApproval!, false)}
                             >
                               <X size={14} /> Not now
                             </Button>
@@ -604,7 +620,10 @@ export function WorkspaceClient({
           </div>
           <PromptInput
             value={prompt}
-            onChange={setPrompt}
+            onChange={(value) => {
+              setPrompt(value);
+              writeAppState("doot:agent-composer:v1", value);
+            }}
             disabled={running}
             onSubmit={() => {
               const value = prompt.trim();

@@ -74,7 +74,7 @@ it("runs production Durable tools, retains transcript/approval budget across reo
       fauxAssistantMessage([fauxToolCall("email_search", { query: "mock" })], { stopReason: "toolUse" }),
       fauxAssistantMessage([fauxText("Done")]),
     ]);
-    await session.prompt("Search the mock cache");
+    await session.prompt("Search the mock cache", "persisted-request-1");
     expect(state.used).toBe(1);
     expect(events.some((event) => event.type === "tool_execution_end" && event.result?.details?.total === 1)).toBe(
       true,
@@ -86,6 +86,8 @@ it("runs production Durable tools, retains transcript/approval budget across reo
     expect(state.selected[0].uid).toBe("1");
     session.subscribe((event) => events.push(event));
     await session.recover();
+    expect(state.used).toBe(1);
+    await session.prompt("Search the mock cache", "persisted-request-1");
     expect(state.used).toBe(1);
     faux.setResponses([
       fauxAssistantMessage([fauxToolCall("codemode", { code: 'return await tools.email_search({query: "mock"});' })], {

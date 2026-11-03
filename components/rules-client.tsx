@@ -170,28 +170,30 @@ export function RulesClient({
       setPreviewing(false);
     }
   };
-  const reviewRun = (rule: Rule) => {
+  const reviewRun = async (rule: Rule) => {
     if (!preview?.total) return;
-    setProposal({
-      rule,
-      matched: preview.total,
-      proposed: Math.min(preview.total, 100),
-      messages: preview.messages.slice(0, 8),
-    });
+    try {
+      const prepared = await apiJson<any>(`/api/rules/${rule.id}/propose`, {
+        method: "POST",
+        json: { expected_rule: ruleActionFingerprint(rule) },
+      });
+      setProposal({ ...prepared, messages: preview.messages.slice(0, 8) });
+    } catch (error) {
+      toast.error("Could not prepare Flow review", errorMessage(error));
+    }
   };
   const apply = async () => {
     if (!proposal || applying) return;
     setApplying(true);
     try {
-      const result = await apiJson<any>(
-        `/api/rules/${proposal.rule.id}/run`,
-        { method: "POST", json: { confirm: true, expected_rule: ruleActionFingerprint(proposal.rule) } },
+      await apiJson<any>(
+        "/api/apply",
+        { method: "POST", json: { confirm: true, id: proposal.proposal.id } },
         "Could not run flow",
       );
       setProposal(null);
       if (active) await loadPreview(active);
-      if (result.applied?.status === "applied") toast.success("Flow applied", `${result.proposed} message(s) updated.`);
-      else toast.info("Flow finished", `Status: ${result.applied?.status || "unknown"}`);
+      toast.info("Flow queued", `Work continues in the app. View progress in History (${proposal.proposed} messages).`);
     } catch (error) {
       toast.error("Could not run flow", errorMessage(error, "Please try again."));
     } finally {
@@ -589,7 +591,7 @@ export function RulesClient({
             ))}
           </div>
         ) : null}
-        {applying && <p className="mailbox-apply-status">Updating the mailbox. Keep this dialog open…</p>}
+        {applying && <p className="mailbox-apply-status">Saving approval. Once queued, work continues in the app…</p>}
         <div className="memory-dialog-actions" aria-busy={applying}>
           <Button
             variant="outline"

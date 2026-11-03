@@ -53,11 +53,13 @@ describe("first-class email flows", () => {
     expect(client).toContain("Approve and run flow");
     expect(client).toContain("The saved flow itself never runs automatically");
     expect(route).toContain('path[2] === "run"');
-    expect(route).toContain('["rule-propose", id]');
-    expect(route).toContain('["apply", String(prepared.proposal.id)]');
+    expect(route).toContain("approveFlowRun");
+    expect(client).toContain("/api/apply");
+    expect(client).toContain("proposal.proposal.id");
     expect(client).toContain("confirm: true");
     expect(client).toContain("closeDisabled={applying}");
-    expect(client).toContain("Updating the mailbox. Keep this dialog open");
+    expect(client).toContain("Once queued, work continues in the app");
+    expect(client).not.toContain("Keep this dialog open");
   });
 
   it("keeps exact approval targets readable instead of truncating them", async () => {

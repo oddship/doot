@@ -7,6 +7,8 @@ import Database from "better-sqlite3";
 import next from "next";
 import { WebSocketServer } from "ws";
 
+process.env.DOOT_INSTANCE_ID = randomUUID();
+
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.DOOT_HOST || "127.0.0.1";
 const port = Number(process.env.DOOT_PORT || process.env.EMAIL_UI_PORT || 8765);
@@ -18,7 +20,14 @@ try {
     .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_sessions'")
     .get();
   if (hasSessions) {
-    const interrupted = bootstrap.prepare("SELECT id FROM agent_sessions WHERE status='running'").all();
+    const hasJobs = bootstrap
+      .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='background_jobs'")
+      .get();
+    const interrupted = bootstrap
+      .prepare(
+        `SELECT id FROM agent_sessions WHERE status='running' AND history_kind='agent' ${hasJobs ? "AND NOT EXISTS (SELECT 1 FROM background_jobs b WHERE b.history_id=agent_sessions.id AND b.status IN ('queued','running'))" : ""}`,
+      )
+      .all();
     const finalize = bootstrap.prepare("UPDATE agent_sessions SET status='error',updated_at=?,error=? WHERE id=?");
     for (const session of interrupted) {
       const file = path.join(
@@ -44,7 +53,16 @@ globalThis.__dootSchedulerToken = schedulerToken;
 
 globalThis.__emailAgentBroadcast = (event) => {
   const encoded = JSON.stringify(event);
-  for (const socket of sockets) if (socket.readyState === 1) socket.send(encoded);
+  for (const socket of sockets) {
+    if (socket.readyState !== 1) continue;
+    try {
+      socket.send(encoded, (error) => {
+        if (error) sockets.delete(socket);
+      });
+    } catch {
+      sockets.delete(socket);
+    }
+  }
 };
 
 const wss = new WebSocketServer({ noServer: true });
@@ -52,6 +70,7 @@ wss.on("connection", (socket) => {
   sockets.add(socket);
   socket.send(JSON.stringify({ type: "cache.refresh", resource: "all" }));
   socket.on("close", () => sockets.delete(socket));
+  socket.on("error", () => sockets.delete(socket));
 });
 server.on("upgrade", (request, socket, head) => {
   const pathname = new URL(request.url || "/", `http://${hostname}:${port}`).pathname;
@@ -75,6 +94,10 @@ process.once("SIGINT", () => close("SIGINT"));
 process.once("SIGTERM", () => close("SIGTERM"));
 let schedulerTimer;
 const schedulerTick = () => {
+  void fetch(`http://${hostname}:${port}/api/background/recover`, {
+    method: "POST",
+    headers: { "x-doot-scheduler-token": schedulerToken },
+  }).catch((error) => console.error("Background recovery tick failed:", error.message));
   void fetch(`http://${hostname}:${port}/api/agent/recover`, {
     method: "POST",
     headers: { "x-doot-scheduler-token": schedulerToken },

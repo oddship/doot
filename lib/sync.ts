@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { emitBackground, store } from "@/lib/store";
+import { enqueueBackgroundJob, kickBackgroundJobs } from "@/lib/background-jobs";
+import { configuredAccounts, db, json, settingsValue } from "@/lib/database";
 
 type SyncJob = {
   id: string | null;
@@ -9,128 +10,65 @@ type SyncJob = {
   accounts: any[];
   results: any[];
 };
-let job: SyncJob = { id: null, status: "idle", started_at: null, finished_at: null, accounts: [], results: [] };
-
-export function getSyncJob() {
-  return job;
-}
-
-export async function startSync(input: { trigger?: "manual" | "schedule"; scheduleId?: number } = {}) {
-  if (job.status === "running") return job;
-  const [{ accounts }, { settings }] = await Promise.all([store<any>(["accounts"]), store<any>(["settings-get"])]);
-  const id = `sync-${randomUUID()}`;
-  job = {
-    id,
-    status: "running",
-    started_at: new Date().toISOString(),
-    finished_at: null,
-    accounts: accounts.map((account: any) => ({ name: account.name, email: account.email, status: "waiting" })),
-    results: [],
+export function getSyncJob(): SyncJob {
+  const row = db
+    .prepare("SELECT * FROM background_jobs WHERE kind='sync' ORDER BY created_at DESC,rowid DESC LIMIT 1")
+    .get() as any;
+  if (!row) return { id: null, status: "idle", started_at: null, finished_at: null, accounts: [], results: [] };
+  const steps = db.prepare("SELECT * FROM background_steps WHERE job_id=? ORDER BY position").all(row.id) as any[];
+  const running = ["queued", "running"].includes(row.status);
+  return {
+    id: row.id,
+    status: running ? "running" : "done",
+    started_at: row.created_at,
+    finished_at: running ? null : row.updated_at,
+    accounts: steps.map((step) => {
+      const input = json<any>(step.input_json, {});
+      const result = json<any>(step.result_json, {}) || {};
+      const error = step.error || result.errors?.map((item: any) => item.error).join("; ");
+      return {
+        name: input.account.name,
+        email: input.account.email,
+        status:
+          step.status === "complete" ? (error ? "error" : "done") : step.status === "running" ? "syncing" : "waiting",
+        ...(error ? { error } : {}),
+        result,
+      };
+    }),
+    results: steps.filter((step) => step.status === "complete").map((step) => json(step.result_json, {})),
   };
-  await store([
-    "session-start",
-    JSON.stringify({
-      id,
-      kind: "job",
-      title: `${input.trigger === "schedule" ? "Scheduled sync" : "Sync mail"} · ${accounts.length} accounts`,
-      status: "running",
-    }),
-  ]);
-  await store([
-    "session-event",
-    JSON.stringify({
-      session_id: id,
-      event_type: "job_started",
-      content: `Syncing ${accounts.length} connected accounts`,
-      metadata: {
-        trigger: input.trigger || "manual",
-        schedule_id: input.scheduleId,
-        sync_days: settings.sync_days,
-        per_account_limit: settings.initial_sync_limit,
-        sync_scope: settings.sync_scope,
-      },
-    }),
-  ]);
-  emitBackground({ type: "sync.status", job });
-  void Promise.all(
-    accounts.map(async (account: any) => {
-      const target = job.accounts.find((item) => item.name === account.name);
-      target.status = "syncing";
-      await store([
-        "session-event",
-        JSON.stringify({
-          session_id: id,
-          event_type: "sync_account_started",
-          content: account.email,
-          metadata: { account: account.name, email: account.email },
-        }),
-      ]);
-      emitBackground({ type: "sync.status", account: target, job });
-      try {
-        const result = await store<any>([
-          "sync",
-          "--account",
-          account.name,
-          "--days",
-          String(settings.sync_days),
-          "--limit",
-          String(settings.initial_sync_limit),
-          "--scope",
-          String(settings.sync_scope || "inbox"),
-          "--folders",
-          JSON.stringify(settings.sync_folders?.[account.name] || []),
-        ]);
-        target.status = result.errors?.length ? "error" : "done";
-        if (result.errors?.length) target.error = result.errors.map((item: any) => item.error).join("; ");
-        target.result = result;
-        job.results.push(result);
-        const summary = result.accounts?.[0];
-        await store([
-          "session-event",
-          JSON.stringify({
-            session_id: id,
-            event_type: target.status === "done" ? "sync_account_complete" : "sync_account_error",
-            content:
-              target.status === "done"
-                ? `${account.email}: ${summary?.cached || 0} cached (${summary?.new || 0} new, ${summary?.backfilled || 0} backfilled)`
-                : `${account.email}: ${target.error}`,
-            metadata: { account: account.name, email: account.email, status: target.status, result },
-          }),
-        ]);
-      } catch (error: any) {
-        target.status = "error";
-        target.error = String(error?.message || error);
-        await store([
-          "session-event",
-          JSON.stringify({
-            session_id: id,
-            event_type: "sync_account_error",
-            content: `${account.email}: ${target.error}`,
-            metadata: { account: account.name, email: account.email, status: "error" },
-          }),
-        ]);
-      }
-      emitBackground({ type: "sync.status", account: target, job });
-    }),
-  ).finally(async () => {
-    job.status = "done";
-    job.finished_at = new Date().toISOString();
-    const failed = job.accounts.filter((account) => account.status === "error");
-    await store([
-      "session-event",
-      JSON.stringify({
-        session_id: id,
-        event_type: "job_complete",
-        content: failed.length
-          ? `Sync finished with ${failed.length} failed account(s)`
-          : `Sync completed for ${job.accounts.length} accounts`,
-        status: failed.length ? "error" : "complete",
-        error: failed.length ? failed.map((account) => `${account.email}: ${account.error}`).join("; ") : undefined,
-        metadata: { accounts: job.accounts, results: job.results },
-      }),
-    ]);
-    emitBackground({ type: "sync.status", job });
-    emitBackground({ type: "cache.refresh", resource: "messages" });
-  });
-  return job;
+}
+export function startSync(
+  input: { trigger?: "manual" | "schedule" | "startup"; scheduleId?: number; commandId?: string } = {},
+) {
+  db.transaction(() => {
+    const active = db
+      .prepare("SELECT id FROM background_jobs WHERE kind='sync' AND status IN ('queued','running') LIMIT 1")
+      .get();
+    if (active) return;
+    const settings = settingsValue();
+    const accounts = configuredAccounts().map((account) => ({ name: account.name, email: account.username }));
+    enqueueBackgroundJob(
+      "sync",
+      input.commandId || `sync:${randomUUID()}`,
+      { trigger: input.trigger || "manual", schedule_id: input.scheduleId },
+      accounts.map((account) => ({ account, settings })),
+      `${input.trigger === "schedule" ? "Scheduled sync" : "Sync mail"} · ${accounts.length} accounts`,
+    );
+  }).immediate();
+  kickBackgroundJobs();
+  return getSyncJob();
+}
+export async function startConfiguredSync() {
+  const instance = process.env.DOOT_INSTANCE_ID;
+  if (!instance) return;
+  const key = `sync-startup`;
+  db.transaction(() => {
+    const old = db.prepare("SELECT value_json FROM app_state WHERE key=?").get(key) as any;
+    if (json(old?.value_json, "") === instance) return;
+    if (settingsValue().sync_on_start) startSync({ trigger: "startup", commandId: `sync:startup:${instance}` });
+    db.prepare(
+      "INSERT INTO app_state(key,value_json) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",
+    ).run(key, JSON.stringify(instance));
+  }).immediate();
 }

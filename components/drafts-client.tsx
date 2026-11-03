@@ -1,12 +1,14 @@
 "use client";
 
 import { Bot, FilePlus2, Save, SendToBack, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { Badge, Button, Card, Input, Label, Textarea } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
+import { flushAppStateWrites, hasPendingAppStateWrite, writeAppState } from "@/lib/client-app-state";
 import { saveSelectedDraft } from "@/lib/client-draft-selection";
 import { navigateClient, replaceClientUrl } from "@/lib/client-navigation";
+import { useCacheEvents } from "@/lib/use-cache-events";
 
 type Draft = {
   id: number;
@@ -51,7 +53,35 @@ export function DraftsClient({
   const [confirmation, setConfirmation] = useState<"imap" | "delete" | null>(null);
   const active = useMemo(() => drafts.find((draft) => draft.id === activeId), [drafts, activeId]);
 
-  const select = (draft: Draft) => {
+  const saveVersion = useRef(0);
+  const [saveState, setSaveState] = useState("Saved locally");
+  const updateEditor = (content: Draft["content"]) => {
+    if (!active) return;
+    setEditor(content);
+    setDrafts((old) =>
+      old.map((draft) =>
+        draft.id === active.id
+          ? { ...draft, content, status: "draft", title: content.subject.trim() || draft.title }
+          : draft,
+      ),
+    );
+    setSaveState("Saving locally…");
+    const version = ++saveVersion.current;
+    writeAppState(`doot:draft-editor:${active.id}`, content);
+    void flushAppStateWrites()
+      .then(() => {
+        if (saveVersion.current === version) setSaveState("Saved locally");
+      })
+      .catch(() => {
+        if (saveVersion.current === version) setSaveState("Local save failed: retry");
+      });
+  };
+  const select = async (draft: Draft) => {
+    try {
+      await flushAppStateWrites();
+    } catch {
+      return;
+    }
     setActiveId(draft.id);
     setEditor(structuredClone(draft.content));
     replaceClientUrl(`/drafts/${draft.id}`);
@@ -64,6 +94,21 @@ export function DraftsClient({
       if (selected) select(selected);
     }
   };
+  useCacheEvents((event) => {
+    if (event.type === "cache.refresh" && ["all", "drafts"].includes(event.resource)) {
+      void apiJson<{ drafts: Draft[] }>("/api/drafts")
+        .then((value) =>
+          setDrafts((current) =>
+            value.drafts.map((draft) =>
+              hasPendingAppStateWrite(`doot:draft-editor:${draft.id}`)
+                ? current.find((item) => item.id === draft.id) || draft
+                : draft,
+            ),
+          ),
+        )
+        .catch(() => {});
+    }
+  });
   const create = async (withDoot = false) => {
     if (!accounts[0]) return toast.error("Connect an account first", "Drafts need an IMAP account.");
     setBusy(true);
@@ -98,6 +143,7 @@ export function DraftsClient({
     if (!active || !editor) return null;
     setBusy(true);
     try {
+      await flushAppStateWrites();
       const value = await apiJson<{ draft: Draft }>(`/api/drafts/${active.id}`, {
         method: "PUT",
         json: editor,
@@ -123,11 +169,12 @@ export function DraftsClient({
     if (!active || !editor) return;
     setBusy(true);
     try {
+      await flushAppStateWrites();
       await apiJson(`/api/drafts/${active.id}`, { method: "PUT", json: editor });
       await apiJson(`/api/drafts/${active.id}/save`, { method: "POST", json: { confirm: true } });
       await refresh(active.id);
       setConfirmation(null);
-      toast.success("Saved to IMAP Drafts", "The message was saved as a draft; it was not sent.");
+      toast.info("Draft upload queued", "Work continues in the app. View the result in History.");
     } catch (error) {
       toast.error("Could not save to IMAP", errorMessage(error));
     } finally {
@@ -138,6 +185,7 @@ export function DraftsClient({
     if (!active) return;
     setBusy(true);
     try {
+      await flushAppStateWrites();
       await apiJson(`/api/drafts/${active.id}`, { method: "DELETE", json: { confirm: true } });
       const remaining = drafts.filter((draft) => draft.id !== active.id);
       setDrafts(remaining);
@@ -203,6 +251,11 @@ export function DraftsClient({
           )}
         </Card>
         <Card className="draft-editor">
+          {editor && (
+            <p className="muted" role="status">
+              {saveState}
+            </p>
+          )}
           {active && editor ? (
             <>
               <div className="node-title-row">
@@ -223,7 +276,7 @@ export function DraftsClient({
                   <Label>From account</Label>
                   <select
                     value={editor.account}
-                    onChange={(event) => setEditor({ ...editor, account: event.target.value })}
+                    onChange={(event) => updateEditor({ ...editor, account: event.target.value })}
                   >
                     {accounts.map((account) => (
                       <option key={account.name} value={account.name}>
@@ -237,28 +290,28 @@ export function DraftsClient({
                   <Input
                     value={editor.to.join(", ")}
                     placeholder="name@example.com"
-                    onChange={(event) => setEditor({ ...editor, to: splitAddresses(event.target.value) })}
+                    onChange={(event) => updateEditor({ ...editor, to: splitAddresses(event.target.value) })}
                   />
                 </div>
                 <div>
                   <Label>Cc</Label>
                   <Input
                     value={editor.cc.join(", ")}
-                    onChange={(event) => setEditor({ ...editor, cc: splitAddresses(event.target.value) })}
+                    onChange={(event) => updateEditor({ ...editor, cc: splitAddresses(event.target.value) })}
                   />
                 </div>
                 <div>
                   <Label>Bcc</Label>
                   <Input
                     value={editor.bcc.join(", ")}
-                    onChange={(event) => setEditor({ ...editor, bcc: splitAddresses(event.target.value) })}
+                    onChange={(event) => updateEditor({ ...editor, bcc: splitAddresses(event.target.value) })}
                   />
                 </div>
                 <div className="field-wide">
                   <Label>Subject</Label>
                   <Input
                     value={editor.subject}
-                    onChange={(event) => setEditor({ ...editor, subject: event.target.value })}
+                    onChange={(event) => updateEditor({ ...editor, subject: event.target.value })}
                   />
                 </div>
                 <div className="field-wide">
@@ -266,7 +319,7 @@ export function DraftsClient({
                   <Textarea
                     className="draft-body"
                     value={editor.body}
-                    onChange={(event) => setEditor({ ...editor, body: event.target.value })}
+                    onChange={(event) => updateEditor({ ...editor, body: event.target.value })}
                   />
                 </div>
               </div>

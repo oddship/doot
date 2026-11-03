@@ -12,6 +12,7 @@ process.env.DOOT_DATABASE_PATH = path.join(directory, "cache.sqlite3");
 const { db } = await import("@/lib/database");
 const { saveRule, getRule } = await import("@/lib/rules");
 const { store } = await import("@/lib/store");
+const { kickBackgroundJobs } = await import("@/lib/background-jobs");
 const { handleFlowRoutes } = await import("@/lib/api/flow-routes");
 db.prepare(
   "INSERT INTO email_accounts(name,host,username,password,created_at,updated_at) VALUES('work','imap.example.test','work@example.test','dummy','now','now')",
@@ -29,12 +30,16 @@ const input = {
 beforeEach(() => {
   vi.clearAllMocks();
   apply.mockResolvedValue({ status: "applied", results: [], errors: [] });
-  db.exec("DELETE FROM actions;DELETE FROM email_rules;DELETE FROM messages;");
+  db.exec(
+    "DELETE FROM background_jobs; DELETE FROM actions;DELETE FROM email_rules;DELETE FROM messages; DELETE FROM sync_state;",
+  );
+  db.prepare("INSERT INTO sync_state(account,folder,uid_validity) VALUES('work','INBOX','7')").run();
   db.prepare(
     "INSERT INTO messages(account,account_email,folder,uid,subject,fetched_at) VALUES('work','work@example.test','INBOX','1','Puzzle alert','now')",
   ).run();
 });
-afterAll(() => {
+afterAll(async () => {
+  await kickBackgroundJobs();
   db.close();
   delete (globalThis as any).__emailAgentDatabase;
   delete process.env.DOOT_DATABASE_PATH;
@@ -85,10 +90,11 @@ describe("reviewable multi-action Flows", () => {
     expect((await store<any>(["action-get", String(result.proposal.id)])).actions).toEqual(["mark_read", "move"]);
     expect((await store<any>(["dashboard"])).actions[0].actions).toEqual(["mark_read", "move"]);
     await store(["apply", String(result.proposal.id)]);
-    expect(apply).toHaveBeenCalledWith(
-      ["mark_read", "move"],
-      [{ account: "work", uid: "1", source_folder: "INBOX", folder: "Transactions" }],
-    );
+    await kickBackgroundJobs();
+    expect(apply.mock.calls.map((call) => call[0])).toEqual([["mark_read"], ["move"]]);
+    expect(apply.mock.calls[0][1]).toEqual([
+      { account: "work", uid: "1", source_folder: "INBOX", folder: "Transactions", uid_validity: "7" },
+    ]);
   });
   it("rejects a stale confirmation when the reviewed action sequence changes", async () => {
     const rule = saveRule(input);
@@ -104,9 +110,9 @@ describe("reviewable multi-action Flows", () => {
     const rule = saveRule(input);
     const route = (body: any) =>
       handleFlowRoutes({
-        request: new Request(`http://localhost/api/rules/${rule.id}/run`, {
+        request: new Request(`http://localhost:8765/api/rules/${rule.id}/run`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Host: "localhost:8765", Origin: "http://localhost:8765" },
           body: JSON.stringify(body),
         }),
         path: ["rules", String(rule.id), "run"],
@@ -116,8 +122,11 @@ describe("reviewable multi-action Flows", () => {
       });
     await expect(route({ confirm: true })).rejects.toThrow("complete Flow action sequence");
     expect(apply).not.toHaveBeenCalled();
-    const response = await route({ confirm: true, expected_rule: ruleActionFingerprint(rule) });
-    expect(response?.status).toBe(200);
-    expect(apply).toHaveBeenCalledTimes(1);
+    const response = await route({ confirm: true, expected_rule: ruleActionFingerprint(rule), command_id: "review-1" });
+    expect(response?.status).toBe(202);
+    const repeated = await route({ confirm: true, expected_rule: ruleActionFingerprint(rule), command_id: "review-1" });
+    expect((await repeated!.json()).job.id).toBe((await response!.json()).job.id);
+    await kickBackgroundJobs();
+    expect(apply).toHaveBeenCalledTimes(2);
   });
 });

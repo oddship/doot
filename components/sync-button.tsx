@@ -81,6 +81,14 @@ export function SyncButton({ icon }: { icon: ReactNode }) {
       try {
         const value = JSON.parse(event.data);
         if (value.type === "sync.status") showJob(value.job);
+        if (value.type === "cache.refresh" && ["all", "messages"].includes(value.resource)) {
+          const currentVersion = version.current;
+          void apiJson<SyncJob>("/api/sync", { cache: "no-store" })
+            .then((job) => {
+              if (mounted && version.current === currentVersion) showJob(job);
+            })
+            .catch(() => {});
+        }
       } catch {
         // Ignore malformed/unrelated frames; HTTP polling recovers sync progress.
       }
@@ -92,14 +100,6 @@ export function SyncButton({ icon }: { icon: ReactNode }) {
         if (mounted && version.current === initialVersion) showJob(job);
       })
       .catch(() => {});
-    if (!sessionStorage.getItem("email-agent-start-sync")) {
-      sessionStorage.setItem("email-agent-start-sync", "checked");
-      void apiJson<any>("/api/settings")
-        .then((value) => {
-          if (mounted && value.settings?.sync_on_start) return sync(false);
-        })
-        .catch(() => {});
-    }
     return () => {
       mounted = false;
       socket.close();

@@ -21,7 +21,7 @@ describe("Agent message body approval", () => {
     expect(workspace).toContain('event.type === "data-read-approval"');
     expect(workspace).toContain("Approve and continue");
     expect(workspace).toContain("Not now");
-    expect(workspace).toContain("saveSelectedIds");
-    expect(workspace).toContain("Read the selected message");
+    expect(workspace).toContain("/body-approvals/${request.id}");
+    expect(workspace).toContain("JSON.stringify({ approved })");
   });
 });

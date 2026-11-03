@@ -1,3 +1,5 @@
+import { readAppState, writeAppState } from "@/lib/client-app-state";
+import { visibleUserPrompt } from "@/lib/history-display";
 import { toolInputSummary } from "@/lib/tool-presentation";
 
 export type ReadApproval = {
@@ -48,11 +50,11 @@ const STORAGE_KEY = "email-agent:conversation:v1";
 export function loadConversationSnapshot(): ConversationSnapshot | null {
   if (typeof window === "undefined") return null;
   try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (!value || !Array.isArray(value.entries)) return null;
+    const value = readAppState(STORAGE_KEY);
+    if (!value) return null;
     return {
       sessionId: typeof value.sessionId === "string" ? value.sessionId : undefined,
-      entries: value.entries.slice(-100),
+      entries: Array.isArray(value.entries) ? value.entries.slice(-100) : [],
     };
   } catch {
     return null;
@@ -69,7 +71,10 @@ export function saveConversationSnapshot(value: ConversationSnapshot) {
 }
 
 export function clearConversationSnapshot() {
-  if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY);
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(STORAGE_KEY);
+    writeAppState(STORAGE_KEY, null);
+  }
 }
 
 export function replayLastTurn(entries: WorkspaceEntry[], data: any): WorkspaceEntry[] {
@@ -128,6 +133,16 @@ export function replayLastTurn(entries: WorkspaceEntry[], data: any): WorkspaceE
   const bodyRequest = [...turn]
     .reverse()
     .find((event: any) => event.event_type === "body_read_requested" && event.metadata?.request)?.metadata?.request;
+  const decision =
+    bodyRequest &&
+    [...events]
+      .reverse()
+      .find((event: any) => event.event_type === "body_read_decided" && event.metadata?.request_id === bodyRequest.id)
+      ?.metadata?.status;
+  const artifact = [...turn].reverse().find((event: any) => event.event_type === "artifact_created")
+    ?.metadata?.artifact;
+  const rule = [...turn].reverse().find((event: any) => ["flow_created", "flow_updated"].includes(event.event_type))
+    ?.metadata?.rule;
   const next = [...entries];
   let index = -1;
   for (let candidate = next.length - 1; candidate >= 0; candidate -= 1) {
@@ -145,7 +160,9 @@ export function replayLastTurn(entries: WorkspaceEntry[], data: any): WorkspaceE
     ...(text ? { text } : {}),
     ...(reasoning ? { reasoning } : {}),
     ...(tools.size ? { tools: [...tools.values()] } : {}),
-    ...(bodyRequest ? { readApproval: { ...bodyRequest, status: "pending" } } : {}),
+    ...(bodyRequest ? { readApproval: { ...bodyRequest, status: decision || "pending" } } : {}),
+    ...(artifact ? { artifact } : {}),
+    ...(rule ? { rule } : {}),
     status: {
       status,
       detail:
@@ -157,4 +174,21 @@ export function replayLastTurn(entries: WorkspaceEntry[], data: any): WorkspaceE
     },
   };
   return next;
+}
+
+export function replayConversation(data: any): WorkspaceEntry[] {
+  const events = Array.isArray(data?.events) ? data.events : [];
+  const prompts = events
+    .map((event: any, index: number) => (event.event_type === "user_prompt" ? index : -1))
+    .filter((index: number) => index >= 0);
+  let entries: WorkspaceEntry[] = [];
+  prompts.forEach((start: number, index: number) => {
+    const turn = events.slice(start, prompts[index + 1] ?? events.length);
+    entries.push({ role: "user", text: visibleUserPrompt(events[start].content) }, { role: "assistant" });
+    entries = replayLastTurn(entries, {
+      events: turn,
+      session: { ...data.session, status: index === prompts.length - 1 ? data.session.status : "complete" },
+    });
+  });
+  return entries;
 }

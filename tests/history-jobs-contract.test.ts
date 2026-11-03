@@ -13,11 +13,11 @@ describe("unified activity history", () => {
   });
 
   it("persists sync jobs and per-account events", async () => {
-    const sync = await readFile("lib/sync.ts", "utf8");
-    expect(sync).toContain('kind: "job"');
-    expect(sync).toContain('event_type: "sync_account_started"');
-    expect(sync).toContain('"sync_account_complete"');
-    expect(sync).toContain('event_type: "job_complete"');
+    const sync = await readFile("lib/background-jobs.ts", "utf8");
+    expect(sync).toContain("INSERT INTO background_jobs");
+    expect(sync).toContain("INSERT INTO background_steps");
+    expect(sync).toContain("background_step_complete");
+    expect(sync).toContain("background_job_finished");
   });
 
   it("filters and labels Agent, Sync, Flow, Action, and Schedule entries", async () => {
@@ -40,24 +40,19 @@ describe("unified activity history", () => {
     expect(server).toContain("/warm");
     expect(route).toContain('key === "schedules" && method === "POST"');
     expect(route).toContain('key === "scheduler/tick"');
-    expect(schedules).toContain('["rule-propose", String(rule.id)]');
-    expect(schedules).toContain('startSync({ trigger: "schedule"');
-    expect(schedules).toContain("scheduled_sync_skipped");
+    expect(schedules).toContain("createMailboxProposal");
+    expect(schedules).toContain('trigger: "schedule"');
+    expect(schedules).toContain("sync already running");
     expect(schedules).not.toContain('["apply"');
     expect(route).toContain('confirmedBody(request, "Explicit confirmation is required to create a schedule")');
   });
 
   it("records configuration, proposal, and IMAP actions without credentials", async () => {
     const route = await readApiRoutes();
-    for (const event of [
-      "account_connected",
-      "folder_${action}",
-      "draft_saved_to_imap",
-      "flow_proposal_created",
-      "proposal_applied",
-      "schedule_created",
-    ])
+    for (const event of ["account_connected", "flow_proposal_created", "schedule_created"])
       expect(route).toContain(event);
+    for (const approval of ["approveFolderMutation", "approveDraftUpload", "approveProposal"])
+      expect(route).toContain(approval);
     expect(route).toContain("Credentials are not included in History");
   });
 });

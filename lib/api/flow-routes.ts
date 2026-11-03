@@ -1,5 +1,6 @@
 import type { ApiRouteHandler } from "@/lib/api/context";
 import { confirmedBody, RouteError, requestBody } from "@/lib/api/context";
+import { approveFlowRun } from "@/lib/background-jobs";
 import { startHistory } from "@/lib/history";
 import { mailActionLabel } from "@/lib/mail-actions";
 import { emitBackground, store } from "@/lib/store";
@@ -35,7 +36,8 @@ export const handleFlowRoutes: ApiRouteHandler = async ({ request, path, key, me
       ]),
     );
   if (path[2] === "propose" && method === "POST") {
-    const result = await store<any>(["rule-propose", id]);
+    const body = await requestBody(request);
+    const result = await store<any>(["rule-propose", id, "--expected", String(body.expected_rule || "")]);
     startHistory({
       kind: "flow",
       title: `Prepared Flow proposal · ${result.rule.name}`,
@@ -51,27 +53,10 @@ export const handleFlowRoutes: ApiRouteHandler = async ({ request, path, key, me
     const confirmation = await confirmedBody(request, "Explicit confirmation is required to run a rule");
     if (typeof confirmation.expected_rule !== "string" || !confirmation.expected_rule)
       throw new RouteError("Preview and confirm the complete Flow action sequence before running", 400);
-    const prepared = await store<any>(["rule-propose", id, "--expected", confirmation.expected_rule]);
-    emitBackground({ type: "proposal.created", proposal: prepared.proposal });
-    const applied = await store<any>(["apply", String(prepared.proposal.id)]);
-    startHistory({
-      kind: "flow",
-      title: `Ran Flow · ${prepared.rule.name}`,
-      status: applied.status === "applied" ? "complete" : "error",
-      event_type: "flow_run_applied",
-      content: `${prepared.proposed} of ${prepared.matched} matches processed · ${applied.status}`,
-      metadata: {
-        flow_id: prepared.rule.id,
-        proposal_id: prepared.proposal.id,
-        matched: prepared.matched,
-        proposed: prepared.proposed,
-        applied,
-      },
-      error: applied.status === "applied" ? undefined : applied.status,
-    });
-    emitBackground({ type: "proposal.updated", proposal: applied });
-    emitBackground({ type: "cache.refresh", resource: "messages", items: applied.results || [] });
-    return Response.json({ ...prepared, applied });
+    if (typeof confirmation.command_id !== "string" || !confirmation.command_id)
+      throw new RouteError("A stable command ID is required", 400);
+    const job = approveFlowRun(Number(id), confirmation.expected_rule, confirmation.command_id);
+    return Response.json({ job }, { status: 202 });
   }
   if (method === "PUT") {
     const before = await store<any>(["rule-get", id]);

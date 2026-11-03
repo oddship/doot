@@ -32,7 +32,9 @@ export function HistoryProposalAction({ proposal }: { proposal: Proposal }) {
       });
       setStatus(result.status);
       setConfirming(false);
-      if (result.status === "applied")
+      if (result.status === "queued" || result.status === "running")
+        toast.info("Proposal queued", "Work continues in the app. View progress in History.");
+      else if (result.status === "applied")
         toast.success("Proposal applied", `${proposal.items.length} mailbox item(s) processed.`);
       else toast.error("Proposal partly applied", "Some steps may have completed. Review History before retrying.");
     } catch (error) {
@@ -59,7 +61,9 @@ export function HistoryProposalAction({ proposal }: { proposal: Proposal }) {
           <Badge tone="error">Recreate proposal · source folder missing</Badge>
         )
       ) : (
-        <Badge tone={status === "applied" ? "good" : "error"}>
+        <Badge
+          tone={status === "applied" ? "good" : status === "queued" || status === "running" ? "attention" : "error"}
+        >
           <CheckCircle2 size={12} /> {status}
         </Badge>
       )}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyConversationToolEvent, replayLastTurn } from "@/lib/client-conversation";
+import { applyConversationToolEvent, replayConversation, replayLastTurn } from "@/lib/client-conversation";
 
 const event = (event_type: string, content: string, metadata = {}) => ({ event_type, content, metadata });
 
@@ -76,4 +76,22 @@ describe("conversation history replay", () => {
     expect(result[0]).toEqual(earlier);
     expect(result[2].text).toBe("New answer");
   });
+});
+
+it("rebuilds saved turns, body decisions, and artifact cards without browser storage", () => {
+  const entries = replayConversation({
+    session: { status: "complete" },
+    events: [
+      event("user_prompt", "First"),
+      event("body_read_requested", "Read", { request: { id: "request", messages: [] } }),
+      event("body_read_decided", "approved", { request_id: "request", status: "approved" }),
+      event("user_prompt", "Continue"),
+      event("assistant_message", "Done"),
+      event("artifact_created", "Saved", { artifact: { id: 1, title: "Draft" } }),
+    ],
+  });
+  expect(entries).toHaveLength(4);
+  expect(entries[1].readApproval?.status).toBe("approved");
+  expect(entries[3].artifact).toEqual({ id: 1, title: "Draft" });
+  expect(entries[3].text).toBe("Done");
 });

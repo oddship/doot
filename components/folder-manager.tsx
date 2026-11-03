@@ -6,6 +6,7 @@ import { Badge, Button, Card, Dialog, Input, Label } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
 import { isProtectedMailbox } from "@/lib/imap-folder";
 import { type MailProvider, mailboxNoun } from "@/lib/mail-provider";
+import { useCacheEvents } from "@/lib/use-cache-events";
 
 type Account = { name: string; email: string; provider?: MailProvider };
 type FolderRow = {
@@ -23,8 +24,8 @@ type FolderRow = {
 };
 type Editor = { mode: "create"; path: string } | { mode: "rename"; path: string; original: string };
 type PendingMutation =
-  | { kind: "save"; editor: Editor; description: string }
-  | { kind: "remove"; folder: FolderRow; description: string };
+  | { kind: "save"; editor: Editor; description: string; commandId: string }
+  | { kind: "remove"; folder: FolderRow; description: string; commandId: string };
 
 export function FolderManager({ accounts, initialFolders }: { accounts: Account[]; initialFolders: FolderRow[] }) {
   const toast = useToast();
@@ -67,6 +68,13 @@ export function FolderManager({ accounts, initialFolders }: { accounts: Account[
     }
   };
 
+  useCacheEvents((event) => {
+    if (event.type === "cache.refresh" && ["all", "folders"].includes(event.resource)) {
+      void apiJson<{ folders: FolderRow[] }>("/api/folders")
+        .then((value) => setFolders(value.folders))
+        .catch(() => {});
+    }
+  });
   const save = () => {
     if (!editor || !account || !editor.path.trim()) return;
     const creating = editor.mode === "create";
@@ -75,6 +83,7 @@ export function FolderManager({ accounts, initialFolders }: { accounts: Account[
       : `Rename ${noun} “${editor.original}” to “${editor.path.trim()}”`;
     setPendingMutation({
       kind: "save",
+      commandId: crypto.randomUUID(),
       editor: { ...editor },
       description: `${description} on ${selectedAccount?.email}? This changes the upstream ${provider === "gmail" ? "Gmail label" : "IMAP folder"} structure.`,
     });
@@ -85,22 +94,25 @@ export function FolderManager({ accounts, initialFolders }: { accounts: Account[
     const accountName = account;
     setLoading(true);
     try {
-      const value = await apiJson<{ provider: MailProvider; folders: FolderRow[] }>(
+      await apiJson(
         `/api/accounts/${encodeURIComponent(accountName)}/folders`,
         {
           method: creating ? "POST" : "PUT",
           json: creating
-            ? { path: editorValue.path, confirm: true }
-            : { path: editorValue.original, new_path: editorValue.path, confirm: true },
+            ? { path: editorValue.path, confirm: true, command_id: pendingMutation?.commandId }
+            : {
+                path: editorValue.original,
+                new_path: editorValue.path,
+                confirm: true,
+                command_id: pendingMutation?.commandId,
+              },
         },
         "Could not update the IMAP folder",
       );
-      setDetectedProviders((current) => ({ ...current, [accountName]: value.provider }));
-      replaceAccountFolders(accountName, value.folders);
       setEditor(null);
       setPendingMutation(null);
-      setNotice(creating ? "Folder created" : "Folder renamed");
-      toast.success(creating ? `${noun} created` : `${noun} renamed`);
+      setNotice("Folder change queued; progress is saved in History");
+      toast.info("Folder change queued", "Work continues in the app. View the result in History.");
     } catch (error) {
       toast.error(`Could not ${creating ? "create" : "rename"} ${noun}`, errorMessage(error, "Please try again."));
     } finally {
@@ -113,26 +125,24 @@ export function FolderManager({ accounts, initialFolders }: { accounts: Account[
       provider === "gmail"
         ? `Remove Gmail label “${folder.path}” from ${selectedAccount?.email}? Messages keep their other labels and remain in All Mail.`
         : `Delete folder “${folder.path}” from ${selectedAccount?.email}? This upstream change may permanently remove folder contents.`;
-    setPendingMutation({ kind: "remove", folder, description: warning });
+    setPendingMutation({ kind: "remove", folder, description: warning, commandId: crypto.randomUUID() });
   };
 
   const commitRemove = async (folder: FolderRow) => {
     setLoading(true);
     const accountName = account;
     try {
-      const value = await apiJson<{ provider: MailProvider; folders: FolderRow[] }>(
+      await apiJson(
         `/api/accounts/${encodeURIComponent(accountName)}/folders`,
         {
           method: "DELETE",
-          json: { path: folder.path, confirm: true },
+          json: { path: folder.path, confirm: true, command_id: pendingMutation?.commandId },
         },
         "Could not delete the IMAP folder",
       );
-      setDetectedProviders((current) => ({ ...current, [accountName]: value.provider }));
-      replaceAccountFolders(accountName, value.folders);
       setPendingMutation(null);
-      setNotice(`${provider === "gmail" ? "Label removed" : "Folder deleted"}; affected flows were paused`);
-      toast.success(provider === "gmail" ? "Label removed" : "Folder deleted", "Affected flows were paused.");
+      setNotice("Folder removal queued; progress is saved in History");
+      toast.info("Folder removal queued", "Work continues in the app. View the result in History.");
     } catch (error) {
       toast.error(
         `Could not ${provider === "gmail" ? "remove the label" : "delete the folder"}`,

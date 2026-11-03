@@ -1,6 +1,6 @@
 import { z } from "zod";
+import { approveDraftUpload } from "@/lib/background-jobs";
 import { accountByName, db, json, now } from "@/lib/database";
-import { appendImapDraft } from "@/lib/imap";
 
 const address = z
   .string()
@@ -95,10 +95,5 @@ export function deleteLocalDraft(id: number) {
 }
 
 export async function saveDraftToImap(id: number) {
-  const draft = getDraft(id).draft;
-  if (!draft.content.to.length) throw new Error("add at least one To recipient before saving to IMAP");
-  if (!draft.content.subject.trim() && !draft.content.body.trim()) throw new Error("the draft is empty");
-  const saved = await appendImapDraft(draft.content.account, draft.content);
-  db.prepare("UPDATE agent_artifacts SET status='saved' WHERE id=? AND kind='draft'").run(id);
-  return { draft: getDraft(id).draft, imap: saved };
+  return { job: approveDraftUpload(getDraft(id).draft) };
 }

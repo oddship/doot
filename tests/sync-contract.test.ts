@@ -5,9 +5,9 @@ import { compactSource } from "./source-contract";
 
 describe("background sync contract", () => {
   it("passes one account separately from numeric sync options", async () => {
-    const sync = compactSource(await readFile("lib/sync.ts", "utf8"));
+    const sync = compactSource(await readFile("lib/background-jobs.ts", "utf8"));
     const store = await readFile("lib/store.ts", "utf8");
-    expect(sync).toContain('"--account", account.name');
+    expect(sync).toContain('"--account", input.account.name');
     expect(store).toContain('option(rest, "--account")');
     expect(store).not.toContain("rest.slice(accountIndex + 1)");
   });
@@ -22,7 +22,7 @@ describe("background sync contract", () => {
   it("syncs in durable batches and records mailbox checkpoints", async () => {
     const imap = await readFile("lib/imap.ts", "utf8");
     const database = await readFile("lib/database.ts", "utf8");
-    const sync = await readFile("lib/sync.ts", "utf8");
+    const sync = await readFile("lib/background-jobs.ts", "utf8");
     expect(imap).toContain("uidBatches(missing)");
     expect(imap).toContain("changedSince");
     expect(imap).toContain("checkpointMatches(state, snapshot");

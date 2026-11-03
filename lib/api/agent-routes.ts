@@ -1,3 +1,4 @@
+import { decideBodyApproval } from "@/lib/agent-jobs";
 import {
   cancelAgent,
   listClassifierModels,
@@ -18,6 +19,19 @@ import {
 import { store } from "@/lib/store";
 
 export const handleAgentRoutes: ApiRouteHandler = async ({ request, path, key, method, url }) => {
+  if (
+    path[0] === "agent" &&
+    path[1] === "sessions" &&
+    path[2] &&
+    path[3] === "body-approvals" &&
+    path[4] &&
+    method === "POST"
+  ) {
+    const value = await requestBody(request);
+    if (value.approved !== true && value.approved !== false)
+      throw new RouteError("An explicit approval decision is required", 400);
+    return Response.json(decideBodyApproval(path[2], path[4], value.approved), { status: 202 });
+  }
   if (key === "agent/recover" && method === "POST") {
     const token = (globalThis as any).__dootSchedulerToken;
     if (!token || request.headers.get("x-doot-scheduler-token") !== token) throw new RouteError("Forbidden", 403);

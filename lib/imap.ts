@@ -1010,7 +1010,7 @@ function requireApplied(value: unknown, operation: string) {
 
 export async function applyMailboxAction(
   action: MailAction,
-  items: Array<{ account: string; uid: string; source_folder: string; folder?: string }>,
+  items: Array<{ account: string; uid: string; source_folder: string; folder?: string; uid_validity?: string }>,
   markRead = action === "mark_read",
 ) {
   normalizeMailActions(undefined, action);
@@ -1043,11 +1043,32 @@ export async function applyMailboxAction(
           .prepare("SELECT uid_validity FROM sync_state WHERE account=? AND folder=?")
           .get(accountName, sourceFolder) as any;
         if (
+          accountItems.some(
+            (item) =>
+              item.uid_validity &&
+              String(client.mailbox ? client.mailbox.uidValidity : undefined) !== item.uid_validity,
+          )
+        )
+          throw new Error("Mailbox UID validity changed since approval; recreate the proposal");
+        if (
           checkpoint?.uid_validity &&
           client.mailbox &&
           String(client.mailbox.uidValidity) !== String(checkpoint.uid_validity)
         )
           throw new Error("Mailbox UID validity changed; sync before applying actions");
+        // UID STORE can succeed even when no matching message exists. Confirm exact
+        // source membership before claiming a write as completed; never fetch bodies.
+        const found = new Set(
+          (
+            await client.fetchAll(
+              accountItems.map((item) => Number(item.uid)),
+              { uid: true },
+              { uid: true },
+            )
+          ).map((item) => String(item.uid)),
+        );
+        if (accountItems.some((item) => !found.has(item.uid)))
+          throw new Error("A proposed message is no longer in its source folder; recreate the proposal");
         if (markRead) {
           requireApplied(
             await client.messageFlagsAdd(

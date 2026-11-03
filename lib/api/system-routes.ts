@@ -1,14 +1,28 @@
 import type { ApiRouteHandler } from "@/lib/api/context";
 import { RouteError, requestBody } from "@/lib/api/context";
 import { getAppState, setAppState } from "@/lib/app-state";
+import { getBackgroundJob, listBackgroundJobs, recoverBackgroundJobs } from "@/lib/background-jobs";
 import { runDueSchedules } from "@/lib/schedules";
 import { store } from "@/lib/store";
+import { startConfiguredSync } from "@/lib/sync";
 
-export const handleSystemRoutes: ApiRouteHandler = async ({ request, key, method }) => {
+export const handleSystemRoutes: ApiRouteHandler = async ({ request, key, method, path }) => {
   if (key === "app-state" && method === "GET") return Response.json({ state: getAppState() });
   if (key === "app-state" && method === "PUT") {
     const value = await requestBody(request);
     return Response.json({ value: setAppState(value.key, value.value) });
+  }
+  if (key === "jobs" && method === "GET") return Response.json(listBackgroundJobs());
+  if (path[0] === "jobs" && path[1] && method === "GET") return Response.json({ job: getBackgroundJob(path[1]) });
+  if (key === "background/recover" && method === "POST") {
+    if (
+      !process.env.DOOT_INSTANCE_ID ||
+      request.headers.get("x-doot-scheduler-token") !== (globalThis as any).__dootSchedulerToken
+    )
+      throw new RouteError("Not found", 404);
+    recoverBackgroundJobs();
+    await startConfiguredSync();
+    return Response.json({ ok: true });
   }
   if (key === "health" && method === "GET")
     return Response.json({ ok: true, runtime: "next+pi+imapflow", sqlite: true, read_preserving: true });

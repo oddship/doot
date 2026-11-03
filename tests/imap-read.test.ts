@@ -115,6 +115,26 @@ describe("confirmed Flow action sequences", () => {
   const items = () =>
     refs(1).map((ref) => ({ account: ref.account, uid: ref.uid, source_folder: ref.folder, folder: "Transactions" }));
   const seen = "\\Seen";
+  it("does not claim success for a UID absent from the approved source", async () => {
+    seed(1);
+    fake.sources.clear();
+    const result = await applyMailboxActions(["mark_read"], items());
+    expect(result.status).toBe("partial_failure");
+    expect(result.errors[0].error).toContain("no longer in its source");
+    expect(fake.operations).toEqual([]);
+  });
+  it("checks the approval UIDVALIDITY even when a new sync checkpoint exists", async () => {
+    seed(1);
+    fake.validity = 8;
+    db.prepare("INSERT INTO sync_state(account,folder,uid_validity) VALUES('work','INBOX','8')").run();
+    const result = await applyMailboxActions(
+      ["mark_read"],
+      items().map((item) => ({ ...item, uid_validity: "7" })),
+    );
+    expect(result.status).toBe("partial_failure");
+    expect(result.errors[0].error).toContain("since approval");
+    expect(fake.operations).toEqual([]);
+  });
   it("marks read before moving using one write session and source UID", async () => {
     seed(1);
     const result = await applyMailboxActions(["mark_read", "move"], items());

@@ -1,4 +1,5 @@
-import { runAgent } from "@/lib/agent-runtime";
+import { randomUUID } from "node:crypto";
+import { enqueueAgentTurn, observeAgentJob } from "@/lib/agent-jobs";
 import { createDetachedUIMessageStream } from "@/lib/ui-message-stream";
 
 export const runtime = "nodejs";
@@ -15,11 +16,11 @@ function lastUserText(messages: any[]) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const text = String(body.text || lastUserText(body.messages) || "").trim();
-  if (!text && !body.organize) return Response.json({ error: "A prompt is required" }, { status: 400 });
-  const stream = createDetachedUIMessageStream((send) =>
-    runAgent(
+  try {
+    const body = await request.json();
+    const text = String(body.text || lastUserText(body.messages) || "").trim();
+    if (!text && !body.organize) return Response.json({ error: "A prompt is required" }, { status: 400 });
+    const job = enqueueAgentTurn(
       {
         sessionId: body.sessionId,
         text,
@@ -29,15 +30,21 @@ export async function POST(request: Request) {
         selectedDraft: body.selectedDraft,
         selectedSearch: body.selectedSearch,
       },
-      send,
-    ),
-  );
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "x-vercel-ai-ui-message-stream": "v1",
-    },
-  });
+      body.commandId || randomUUID(),
+    );
+    const stream = createDetachedUIMessageStream((send) => observeAgentJob(job.id, send));
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "x-vercel-ai-ui-message-stream": "v1",
+      },
+    });
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Could not accept agent turn" },
+      { status: 400 },
+    );
+  }
 }

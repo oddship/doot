@@ -63,7 +63,8 @@ describe("Inbox deep links", () => {
     expect(client).toContain('title="Confirm mailbox change"');
     expect(client).toContain("Confirm and apply");
     expect(client).toContain("applyingProposal");
-    expect(client).toContain("Updating the mailbox. Keep this dialog open");
+    expect(client).toContain("Once queued, work continues in the app");
+    expect(client).not.toContain("Keep this dialog open");
     expect(client).toContain('tooltipSide="top"');
     expect(client).toContain("aria-busy={applyingProposal}");
     expect(client).toContain("closeDisabled={applyingProposal}");

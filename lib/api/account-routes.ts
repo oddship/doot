@@ -1,9 +1,11 @@
 import type { ApiRouteHandler } from "@/lib/api/context";
-import { confirmedBody, requestBody } from "@/lib/api/context";
+import { confirmedBody, RouteError, requestBody } from "@/lib/api/context";
+import { approveFolderMutation } from "@/lib/background-jobs";
 import { startHistory } from "@/lib/history";
-import { emitBackground, store } from "@/lib/store";
+import { store } from "@/lib/store";
 
 export const handleAccountRoutes: ApiRouteHandler = async ({ request, path, key, method }) => {
+  if (key === "folders" && method === "GET") return Response.json(await store(["folder-cache"]));
   if (key === "accounts" && method === "GET") return Response.json(await store(["accounts"]));
   if (key === "accounts" && method === "POST") {
     const result = await store<any>(["account-upsert", JSON.stringify(await requestBody(request))]);
@@ -26,21 +28,11 @@ export const handleAccountRoutes: ApiRouteHandler = async ({ request, path, key,
   if (path[2] === "folders" && ["POST", "PUT", "DELETE"].includes(method)) {
     const value = await confirmedBody(request, "Explicit confirmation is required for every IMAP folder write");
     const action = method === "POST" ? "create" : method === "PUT" ? "rename" : "delete";
-    const result = await store<any>([
-      "folder-mutate",
-      name,
-      JSON.stringify({ action, path: value.path, ...(action === "rename" ? { new_path: value.new_path } : {}) }),
-    ]);
-    startHistory({
-      kind: "action",
-      title: `${action === "create" ? "Created" : action === "rename" ? "Renamed" : "Removed"} IMAP ${result.provider === "gmail" ? "label" : "folder"}`,
-      event_type: `folder_${action}`,
-      content: `${name}: ${value.path}${value.new_path ? ` → ${value.new_path}` : ""}`,
-      metadata: { account: name, operation: result.operation },
-    });
-    emitBackground({ type: "cache.refresh", resource: "folders", account: name });
-    if (action !== "create") emitBackground({ type: "cache.refresh", resource: "rules" });
-    return Response.json(result, { status: action === "create" ? 201 : 200 });
+    if (typeof value.command_id !== "string" || !value.command_id)
+      throw new RouteError("A stable command ID is required", 400);
+    const operation = { action, path: value.path, ...(action === "rename" ? { new_path: value.new_path } : {}) };
+    const job = approveFolderMutation(name, operation, value.command_id);
+    return Response.json({ job }, { status: 202 });
   }
   if (method === "PUT") {
     const result = await store<any>(["account-upsert", JSON.stringify({ ...(await requestBody(request)), name })]);

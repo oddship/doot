@@ -3,6 +3,7 @@ import { AppStateProvider } from "@/components/app-state-provider";
 import { getAppState } from "@/lib/app-state";
 import "./globals.css";
 import { AppHeader } from "@/components/app-header";
+import { BackgroundJobStatus } from "@/components/background-job-status";
 import { FeedbackProvider } from "@/components/feedback";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <FeedbackProvider>
           <AppStateProvider state={getAppState()}>
             <AppHeader />
+            <BackgroundJobStatus />
             {children}
           </AppStateProvider>
         </FeedbackProvider>

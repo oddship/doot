@@ -11,7 +11,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (original) => ({
   ModelRuntime: { create: async () => runtime.current },
 }));
 
-it("continues the same production conversation after runtime reopen and deduplicates History projection", async () => {
+it("continues conversations and preserves completed workflow state when a command is retried", async () => {
   const directory = mkdtempSync(path.join(tmpdir(), "doot-runtime-transition-"));
   process.env.DOOT_DATABASE_PATH = path.join(directory, "cache.sqlite");
   const faux = fauxProvider();
@@ -55,6 +55,32 @@ it("continues the same production conversation after runtime reopen and deduplic
       count: 1,
     });
     expect(db.prepare("SELECT COUNT(*) count FROM agent_events WHERE event_type='tool_start'").get()).toEqual({
+      count: 1,
+    });
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("render_workspace", {
+            schemaVersion: 1,
+            title: "Synthetic review",
+            summary: "Review the suggested Flow",
+            root: {
+              type: "action_group",
+              actions: [{ label: "Review Flow", intent: { type: "open_flow", flowId: 1 } }],
+            },
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([fauxText("Review the saved Flow.")]),
+    ]);
+    const command = { text: "Suggest a flow for my inbox", requestId: "workflow-recovery-command" };
+    const workflowId = await runAgent(command, () => {});
+    expect(db.prepare("SELECT status FROM agent_sessions WHERE id=?").get(workflowId)).toEqual({ status: "complete" });
+    await closeAgentRuntime();
+    await runAgent({ ...command, sessionId: workflowId }, () => {});
+    expect(db.prepare("SELECT status FROM agent_sessions WHERE id=?").get(workflowId)).toEqual({ status: "complete" });
+    expect(db.prepare("SELECT COUNT(*) count FROM agent_views WHERE session_id=?").get(workflowId)).toEqual({
       count: 1,
     });
   } finally {

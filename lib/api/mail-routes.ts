@@ -1,5 +1,6 @@
 import type { ApiRouteHandler } from "@/lib/api/context";
 import { confirmedBody, RouteError, requestBody } from "@/lib/api/context";
+import { approveProposal } from "@/lib/background-jobs";
 import { startHistory } from "@/lib/history";
 import { sanitizeMessageHtml } from "@/lib/mail";
 import { mailActionLabel } from "@/lib/mail-actions";
@@ -75,19 +76,8 @@ export const handleMailRoutes: ApiRouteHandler = async ({ request, path, key, me
     return Response.json({ proposal: await store(["action-get", path[1]]) });
   if (key === "apply" && method === "POST") {
     const value = await confirmedBody(request);
-    const result = await store<any>(["apply", String(value.id)]);
-    startHistory({
-      kind: "action",
-      title: `Applied mailbox proposal ${value.id}`,
-      status: result.status === "applied" ? "complete" : "error",
-      event_type: "proposal_applied",
-      content: `Mailbox action finished with status ${result.status}.`,
-      metadata: { proposal_id: value.id, result },
-      error: result.status === "applied" ? undefined : result.status,
-    });
-    emitBackground({ type: "proposal.updated", proposal: result });
-    emitBackground({ type: "cache.refresh", resource: "messages", items: result.results || [] });
-    return Response.json(result);
+    const job = approveProposal(Number(value.id));
+    return Response.json({ status: job.status, job }, { status: 202 });
   }
   return null;
 };

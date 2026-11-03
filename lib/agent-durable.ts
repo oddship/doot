@@ -321,12 +321,9 @@ export async function openDurableAgent(options: {
             throw new Error("Interrupted Agent run did not complete; review History before continuing");
         }
       },
-      async prompt(prompt: string) {
+      async prompt(prompt: string, requestId: string = randomUUID()) {
         await capture();
-        const submitted = await root.submit(
-          { type: "input", content: prompt, whenBusy: "reject", requestId: randomUUID() },
-          context,
-        );
+        const submitted = await root.submit({ type: "input", content: prompt, whenBusy: "reject", requestId }, context);
         const settled = await submitted.wait(context);
         await projectHistory();
         if (settled.status !== "done")
