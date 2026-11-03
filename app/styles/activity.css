@@ -153,3 +153,110 @@
   background: var(--accent-soft);
   font-size: 12px;
 }
+
+.history-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.history-overview button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+}
+.history-overview button strong {
+  font-size: 26px;
+  line-height: 1;
+}
+.history-overview button[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+.history-error-summary {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+.session-link progress {
+  width: 100%;
+  height: 5px;
+}
+.history-outcome {
+  margin-bottom: 20px;
+  padding: 24px;
+}
+.history-outcome progress {
+  width: 100%;
+  height: 8px;
+}
+.history-step-list {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 0;
+}
+.history-step-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.history-step-list li > div:first-child {
+  flex: 1;
+  display: grid;
+  gap: 6px;
+  min-width: 200px;
+}
+.history-step-list li > p,
+.history-step-list li > details {
+  width: 100%;
+  margin: 0;
+}
+.history-step-list pre,
+.history-execution-log pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.history-source-links {
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+}
+.history-grid.history-detail-layout {
+  grid-template-columns: 1fr;
+}
+.history-grid.history-detail-layout > .history-detail:first-child {
+  position: static;
+  max-height: none;
+  order: 2;
+}
+.history-execution-log > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.history-execution-log[open] > summary {
+  margin-bottom: 20px;
+}
+@media (max-width: 600px) {
+  .history-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .history-outcome {
+    padding: 16px;
+  }
+}
+.history-step-receipts {
+  margin-top: 20px;
+}
+.history-step-receipts > summary {
+  cursor: pointer;
+  font-weight: 600;
+}

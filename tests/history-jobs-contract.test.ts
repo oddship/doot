@@ -22,7 +22,7 @@ describe("unified activity history", () => {
 
   it("filters and labels Agent, Sync, Flow, Action, and Schedule entries", async () => {
     const list = await readFile("components/history-screen.tsx", "utf8");
-    const detail = await readFile("app/history/[id]/page.tsx", "utf8");
+    const detail = await readFile("components/history-detail.tsx", "utf8");
     for (const kind of ["agent", "job", "flow", "action", "schedule"]) expect(list).toContain(`${kind}: { label:`);
     expect(list).toContain("All statuses");
     expect(list).toContain("Filter by title");

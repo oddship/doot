@@ -29,7 +29,7 @@ describe("agent Markdown", () => {
   it("uses Markdown only for non-user conversation content and history responses", async () => {
     const [workspace, history] = await Promise.all([
       readFile("components/workspace-client.tsx", "utf8"),
-      readFile("app/history/[id]/page.tsx", "utf8"),
+      readFile("components/history-detail.tsx", "utf8"),
     ]);
     expect(workspace).toContain('entry.role === "user"');
     expect(workspace).toContain("<MarkdownContent>{entry.text}</MarkdownContent>");
