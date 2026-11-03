@@ -71,6 +71,25 @@ export function ProviderAuthManager({
   };
 
   useEffect(() => {
+    void apiJson<{ sessions: LoginSession[] }>("/api/agent/auth/login")
+      .then((value) => {
+        const current = value.sessions.find((session) => ["running", "waiting"].includes(session.status));
+        if (current) {
+          setProviderId(current.provider);
+          setLogin(current);
+        }
+      })
+      .catch(() => {});
+  }, []);
+  const resumeLogin = async () => {
+    const value = await apiJson<{ sessions: LoginSession[] }>("/api/agent/auth/login");
+    const current = value.sessions.find(
+      (session) => session.provider === providerId && ["running", "waiting", "error"].includes(session.status),
+    );
+    if (current) setLogin(current);
+    else toast.info("No active login", "Start a new connection below.");
+  };
+  useEffect(() => {
     if (!login || ["complete", "error", "cancelled"].includes(login.status)) return;
     const timer = window.setTimeout(async () => {
       try {
@@ -217,10 +236,13 @@ export function ProviderAuthManager({
             ))}
         </div>
       )}
+      <Button variant="outline" onClick={() => void resumeLogin()}>
+        Resume login
+      </Button>
       <Dialog
         open={Boolean(login)}
         title={login ? `Connect ${login.provider_name}` : "Connect provider"}
-        onClose={cancel}
+        onClose={() => setLogin(null)}
       >
         {login && (
           <div className="provider-login-dialog">
@@ -313,6 +335,12 @@ export function ProviderAuthManager({
             {login.status === "running" && !login.prompt && <p className="muted">Waiting for the provider…</p>}
             {login.status === "complete" && <p>Connected. You can now select an available model below.</p>}
             {login.error && <p className="error-text">{login.error}</p>}
+            {["running", "waiting"].includes(login.status) && (
+              <Button variant="outline" onClick={() => void cancel()}>
+                Cancel login
+              </Button>
+            )}
+            <p className="muted">You can close this dialog and resume login from Settings.</p>
           </div>
         )}
       </Dialog>

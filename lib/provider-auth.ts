@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getAgentModelRuntime } from "@/lib/agent-runtime";
+import { db, json } from "@/lib/database";
 import { startHistory } from "@/lib/history";
 import { emitBackground } from "@/lib/store";
 
@@ -38,7 +39,9 @@ type LoginSession = {
   updatedAt: number;
 };
 
-const loginSessions = new Map<string, LoginSession>();
+const globals = globalThis as typeof globalThis & { __dootProviderLogins?: Map<string, LoginSession> };
+globals.__dootProviderLogins ||= new Map<string, LoginSession>();
+const loginSessions = globals.__dootProviderLogins;
 const LOGIN_TTL = 20 * 60_000;
 
 function cleanSessions() {
@@ -58,7 +61,7 @@ function safeExternalUrl(value: unknown) {
 }
 
 function publicSession(session: LoginSession) {
-  return {
+  const value = {
     id: session.id,
     provider: session.provider,
     provider_name: session.providerName,
@@ -70,6 +73,13 @@ function publicSession(session: LoginSession) {
     created_at: new Date(session.createdAt).toISOString(),
     updated_at: new Date(session.updatedAt).toISOString(),
   };
+  db.prepare(
+    "INSERT INTO app_state(key,value_json) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",
+  ).run(
+    `provider-login:${session.id}`,
+    JSON.stringify({ owner: process.env.DOOT_INSTANCE_ID || `process-${process.pid}`, view: value }),
+  );
+  return value;
 }
 
 function getSession(id: string) {
@@ -106,6 +116,7 @@ function notify(session: LoginSession, event: any) {
   }
   session.events = [...session.events.slice(-19), safe];
   session.updatedAt = Date.now();
+  publicSession(session);
   emitBackground({ type: "cache.refresh", resource: "provider-auth", login_id: session.id });
 }
 
@@ -196,6 +207,7 @@ export async function startProviderLogin(providerId: string, authType: AuthType)
           const abort = () => reject(new Error("Login cancelled"));
           prompt.signal?.addEventListener("abort", abort, { once: true });
           session.controller.signal.addEventListener("abort", abort, { once: true });
+          publicSession(session);
           emitBackground({ type: "cache.refresh", resource: "provider-auth", login_id: session.id });
         }),
     })
@@ -212,6 +224,7 @@ export async function startProviderLogin(providerId: string, authType: AuthType)
         content: `${session.authType === "oauth" ? "OAuth" : "API-key"} credentials were stored locally and redacted.`,
         metadata: { provider: session.provider, auth_type: session.authType },
       });
+      publicSession(session);
       emitBackground({ type: "cache.refresh", resource: "provider-auth", login_id: session.id });
     })
     .catch((error: any) => {
@@ -221,13 +234,31 @@ export async function startProviderLogin(providerId: string, authType: AuthType)
       session.status = session.controller.signal.aborted ? "cancelled" : "error";
       session.error = session.controller.signal.aborted ? "Login cancelled" : String(error?.message || error);
       session.updatedAt = Date.now();
+      publicSession(session);
       emitBackground({ type: "cache.refresh", resource: "provider-auth", login_id: session.id });
     });
   return publicSession(session);
 }
 
 export function getProviderLogin(id: string) {
-  return publicSession(getSession(id));
+  if (loginSessions.has(id)) return publicSession(getSession(id));
+  const row = db.prepare("SELECT value_json FROM app_state WHERE key=?").get(`provider-login:${id}`) as any;
+  if (!row) throw new Error("login session not found or expired");
+  const saved = json<any>(row.value_json, {});
+  if (["waiting", "running"].includes(saved.view.status)) {
+    saved.view.status = "error";
+    saved.view.error = "Login was interrupted by an app restart or expired. Start a new login.";
+    saved.view.prompt = undefined;
+    db.prepare("UPDATE app_state SET value_json=? WHERE key=?").run(JSON.stringify(saved), `provider-login:${id}`);
+  }
+  return saved.view;
+}
+export function listProviderLogins() {
+  cleanSessions();
+  const rows = db
+    .prepare("SELECT key FROM app_state WHERE key LIKE 'provider-login:%' ORDER BY rowid DESC LIMIT 20")
+    .all() as any[];
+  return { sessions: rows.map((row) => getProviderLogin(row.key.slice("provider-login:".length))) };
 }
 
 export function respondToProviderLogin(id: string, promptId: string, value: string) {

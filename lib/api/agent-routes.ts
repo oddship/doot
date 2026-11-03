@@ -12,6 +12,7 @@ import {
   cancelProviderLogin,
   getProviderLogin,
   listProviderAuth,
+  listProviderLogins,
   logoutProvider,
   respondToProviderLogin,
   startProviderLogin,
@@ -49,6 +50,7 @@ export const handleAgentRoutes: ApiRouteHandler = async ({ request, path, key, m
     return Response.json({ models, classifier_models });
   }
   if (key === "agent/auth/providers" && method === "GET") return Response.json(await listProviderAuth());
+  if (key === "agent/auth/login" && method === "GET") return Response.json(listProviderLogins());
   if (key === "agent/auth/login" && method === "POST") {
     const value = await requestBody(request);
     return Response.json(
