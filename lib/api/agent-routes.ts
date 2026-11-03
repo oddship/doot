@@ -42,7 +42,10 @@ export const handleAgentRoutes: ApiRouteHandler = async ({ request, path, key, m
     await confirmedBody(request);
     return Response.json(await cancelAgent(path[2]));
   }
-  if (key === "agent/sessions" && method === "GET") return Response.json(await store(["session-list"]));
+  if (key === "agent/sessions" && method === "GET")
+    return Response.json(
+      await store(["session-list", ...(url.searchParams.get("running") === "1" ? ["--running"] : [])]),
+    );
   if (path[0] === "agent" && path[1] === "sessions" && path[2] && method === "GET")
     return Response.json(await store(["session-get", path[2]]));
   if (key === "agent/models" && method === "GET") {

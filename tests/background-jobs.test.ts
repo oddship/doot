@@ -241,3 +241,32 @@ it("finishes accepted writes even when a disconnected view notification fails", 
     (globalThis as any).__emailAgentBroadcast = previous;
   }
 });
+
+it("broadcasts actual mailbox receipts and sync completion for live views", async () => {
+  const previous = (globalThis as any).__emailAgentBroadcast;
+  const events: any[] = [];
+  (globalThis as any).__emailAgentBroadcast = (event: any) => events.push(event);
+  try {
+    fake.apply.mockResolvedValue({
+      status: "applied",
+      results: [{ account: "fake", uid: "1", source_folder: "INBOX", cache_hidden: true }],
+      errors: [],
+    });
+    approveProposal(proposal());
+    await kickBackgroundJobs();
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "cache.refresh",
+        resource: "messages",
+        items: [expect.objectContaining({ uid: "1", cache_hidden: true })],
+      }),
+    );
+    enqueueBackgroundJob("sync", "empty-notification-check", {}, [], "Synthetic sync");
+    await kickBackgroundJobs();
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "sync.status", job: expect.objectContaining({ status: "done" }) }),
+    );
+  } finally {
+    (globalThis as any).__emailAgentBroadcast = previous;
+  }
+});

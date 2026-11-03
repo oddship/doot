@@ -66,7 +66,7 @@ it("filters attention items and refreshes saved outcomes without starting work",
     expect(container.querySelectorAll(".session-link")).toHaveLength(1);
     expect(container.querySelector(".session-link")?.textContent).toContain("Work review");
     state.api.mockResolvedValue({ sessions: [session("done", "complete")] });
-    await act(async () => state.refresh!({ type: "cache.refresh" }));
+    await act(async () => state.refresh!({ type: "cache.refresh", resource: "history" }));
     expect(container.textContent).toContain("No history entries match");
     expect(state.api).toHaveBeenCalledWith("/api/agent/sessions", { cache: "no-store" });
   } finally {

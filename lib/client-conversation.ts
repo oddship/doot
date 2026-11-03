@@ -192,3 +192,14 @@ export function replayConversation(data: any): WorkspaceEntry[] {
   });
   return entries;
 }
+
+export function conversationRevision(session: any, detail?: any) {
+  return JSON.stringify([
+    session.id,
+    session.updated_at,
+    session.status,
+    detail?.events?.at(-1)?.id,
+    detail?.job?.status,
+    detail?.job?.completed,
+  ]);
+}

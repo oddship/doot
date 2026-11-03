@@ -1,6 +1,6 @@
 "use client";
 import { ArrowRight, Eye, FilePenLine, MailCheck, Pencil, Plus, Search, ShieldCheck, Sparkles, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Artifact,
   Conversation,
@@ -20,6 +20,7 @@ import { flushAppStateWrites, readAppState, writeAppState } from "@/lib/client-a
 import {
   applyConversationToolEvent,
   clearConversationSnapshot,
+  conversationRevision,
   loadConversationSnapshot,
   type ReadApproval,
   replayLastTurn,
@@ -46,6 +47,7 @@ import {
   saveSelectedSearch,
 } from "@/lib/client-search-selection";
 import { loadSelectedRefs, SELECTION_EVENT } from "@/lib/client-selection";
+import { useCacheEvents } from "@/lib/use-cache-events";
 
 export type { WorkspaceEntry } from "@/lib/client-conversation";
 
@@ -95,12 +97,14 @@ export function WorkspaceClient({
   initialEntries = [],
   initialModel,
   initialSessionId,
+  initialRunRevision = "",
   backgroundUpdates = true,
 }: {
   initialWorkspace: any;
   initialEntries?: WorkspaceEntry[];
   initialModel?: AgentModelSummary | null;
   initialSessionId?: string;
+  initialRunRevision?: string;
   backgroundUpdates?: boolean;
 }) {
   const toast = useToast();
@@ -178,92 +182,142 @@ export function WorkspaceClient({
       window.removeEventListener(SEARCH_SELECTION_EVENT, refresh);
     };
   }, []);
+  const runActive = useRef(running);
+  const runRevision = useRef(initialRunRevision);
+  const workspaceRevision = useRef(JSON.stringify(initialWorkspace?.legacy || initialWorkspace));
+  const backgroundRefresh = useRef<{ run: () => void; workspace: () => void }>({ run: () => {}, workspace: () => {} });
+  useEffect(() => {
+    runActive.current = running;
+  }, [running]);
+  useCacheEvents((value) => {
+    if (!backgroundUpdates || value.type !== "cache.refresh") return;
+    if (value.resource === "all" || value.resource === "workspaces") void backgroundRefresh.current.workspace();
+    if (value.resource === "all" || (value.resource === "history" && runActive.current))
+      void backgroundRefresh.current.run();
+  });
   useEffect(() => {
     if (!backgroundUpdates) return;
     let disposed = false;
+    let pendingRun = false;
+    let runQueued = false;
+    let pendingWorkspace = false;
+    let workspaceQueued = false;
     const refreshWorkspace = async () => {
-      const response = await fetch("/api/workspaces/latest", {
-        cache: "no-store",
-      });
-      if (!response.ok || disposed) return;
-      const value = await response.json();
-      if (value.workspace?.compatible && value.workspace.spec) setWorkspace(value.workspace.spec);
-    };
-    const refreshRun = async () => {
-      if (streaming.current) return;
-      const requestedSession = session.current;
-      const requestedTurn = turnGeneration.current;
-      let latest: any;
-      let detail: any;
-      if (session.current) {
-        const response = await fetch(`/api/agent/sessions/${encodeURIComponent(session.current)}`, {
+      if (pendingWorkspace) {
+        workspaceQueued = true;
+        return;
+      }
+      pendingWorkspace = true;
+      try {
+        const response = await fetch("/api/workspaces/latest", {
           cache: "no-store",
         });
         if (!response.ok || disposed) return;
-        detail = await response.json();
-        latest = detail.session;
-      } else {
-        const response = await fetch("/api/agent/sessions", { cache: "no-store" });
-        if (!response.ok || disposed) return;
-        latest = (await response.json()).sessions?.find(
-          (item: any) => item.status === "running" && item.history_kind !== "job",
-        );
+        const value = await response.json();
+        if (value.workspace?.compatible && value.workspace.spec) {
+          const revision = JSON.stringify(value.workspace.spec);
+          if (revision !== workspaceRevision.current) {
+            workspaceRevision.current = revision;
+            setWorkspace(value.workspace.spec);
+          }
+        }
+      } catch {
+        /* Reconnect and visibility refresh retry persisted state. */
+      } finally {
+        pendingWorkspace = false;
+        if (workspaceQueued && !disposed) {
+          workspaceQueued = false;
+          void refreshWorkspace();
+        }
       }
-      if (
-        !latest ||
-        disposed ||
-        streaming.current ||
-        requestedSession !== session.current ||
-        requestedTurn !== turnGeneration.current
-      )
+    };
+    const refreshRun = async () => {
+      if (streaming.current) return;
+      if (pendingRun) {
+        runQueued = true;
         return;
-      if (latest.model_provider && latest.model_id)
-        setAgentModel({ provider: latest.model_provider, id: latest.model_id });
-      if (latest.status === "running") {
-        if (detail) setEntries((old) => replayLastTurn(old, detail));
-        setSessionId(latest.id);
-        setRunning(true);
-        setEntries((old) =>
-          old.length
-            ? old
-            : [
-                {
-                  role: "assistant",
-                  status: {
-                    status: "running",
-                    detail: "Reattached to Doot, still working in the background…",
+      }
+      pendingRun = true;
+      try {
+        const requestedSession = session.current;
+        const requestedTurn = turnGeneration.current;
+        let latest: any;
+        let detail: any;
+        if (session.current) {
+          const response = await fetch(`/api/agent/sessions/${encodeURIComponent(session.current)}`, {
+            cache: "no-store",
+          });
+          if (!response.ok || disposed) return;
+          detail = await response.json();
+          latest = detail.session;
+        } else {
+          const response = await fetch("/api/agent/sessions?running=1", { cache: "no-store" });
+          if (!response.ok || disposed) return;
+          latest = (await response.json()).sessions?.find(
+            (item: any) => item.status === "running" && item.history_kind === "agent",
+          );
+        }
+        if (
+          !latest ||
+          disposed ||
+          streaming.current ||
+          requestedSession !== session.current ||
+          requestedTurn !== turnGeneration.current
+        )
+          return;
+        const revision = conversationRevision(latest, detail);
+        if (latest.model_provider && latest.model_id)
+          setAgentModel((old) =>
+            old?.provider === latest.model_provider && old?.id === latest.model_id
+              ? old
+              : { provider: latest.model_provider, id: latest.model_id },
+          );
+        if (revision === runRevision.current) return;
+        runRevision.current = revision;
+        if (latest.status === "running") {
+          if (detail) setEntries((old) => replayLastTurn(old, detail));
+          setSessionId(latest.id);
+          setRunning(true);
+          setEntries((old) =>
+            old.length
+              ? old
+              : [
+                  {
+                    role: "assistant",
+                    status: {
+                      status: "running",
+                      detail: "Reattached to Doot, still working in the background…",
+                    },
                   },
-                },
-              ],
-        );
-      } else if (session.current === latest.id) {
-        setRunning(false);
-        setEntries((old) => (detail ? replayLastTurn(old, detail) : old));
-        if (latest.status === "complete") await refreshWorkspace();
+                ],
+          );
+        } else if (session.current === latest.id) {
+          setRunning(false);
+          setEntries((old) => (detail ? replayLastTurn(old, detail) : old));
+          if (latest.status === "complete") await refreshWorkspace();
+        }
+      } catch {
+        /* A transient read failure cannot change the saved run's status. */
+      } finally {
+        pendingRun = false;
+        if (runQueued && !disposed) {
+          runQueued = false;
+          void refreshRun();
+        }
       }
     };
-    void refreshWorkspace();
+    backgroundRefresh.current = { run: refreshRun, workspace: refreshWorkspace };
     void refreshRun();
-    const socket = new WebSocket(`ws://${location.host}/ws`);
-    socket.onmessage = (event) => {
-      const value = JSON.parse(event.data);
-      if (value.type === "cache.refresh" && (value.resource === "all" || value.resource === "workspaces")) {
-        void refreshWorkspace();
-        void refreshRun();
-      }
-    };
-    const refreshVisibleRun = () => {
-      if (document.visibilityState === "visible") void refreshRun();
-    };
-    document.addEventListener("visibilitychange", refreshVisibleRun);
-    const poll = setInterval(refreshVisibleRun, 2_000);
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible" && runActive.current) void refreshRun();
+    }, 3000);
     return () => {
       disposed = true;
       clearInterval(poll);
-      document.removeEventListener("visibilitychange", refreshVisibleRun);
-      socket.close();
+      backgroundRefresh.current = { run: () => {}, workspace: () => {} };
     };
   }, [backgroundUpdates]);
+
   const run = async (text: string, organize = false) => {
     if (running || streaming.current) return;
     streaming.current = true;
@@ -357,28 +411,34 @@ export function WorkspaceClient({
       setRunning(false);
     }
   };
-  const setReadApprovalStatus = (id: string, status: "approved" | "denied") =>
-    setEntries((current) =>
-      current.map((entry) =>
-        entry.readApproval?.id === id ? { ...entry, readApproval: { ...entry.readApproval, status } } : entry,
+  const setReadApprovalStatus = useCallback(
+    (id: string, status: "approved" | "denied") =>
+      setEntries((current) =>
+        current.map((entry) =>
+          entry.readApproval?.id === id ? { ...entry, readApproval: { ...entry.readApproval, status } } : entry,
+        ),
       ),
-    );
-  const decideRead = async (request: ReadApproval, approved: boolean) => {
-    if (!session.current) return;
-    try {
-      const response = await fetch(`/api/agent/sessions/${session.current}/body-approvals/${request.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approved }),
-      });
-      if (!response.ok) throw new Error((await response.json()).error || "Could not save body approval");
-      setReadApprovalStatus(request.id, approved ? "approved" : "denied");
-      if (approved) setRunning(true);
-    } catch (error) {
-      toast.error("Could not save approval", error instanceof Error ? error.message : String(error));
-    }
-  };
-  const approveRead = (request: ReadApproval) => void decideRead(request, true);
+    [],
+  );
+  const decideRead = useCallback(
+    async (request: ReadApproval, approved: boolean) => {
+      if (!session.current) return;
+      try {
+        const response = await fetch(`/api/agent/sessions/${session.current}/body-approvals/${request.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ approved }),
+        });
+        if (!response.ok) throw new Error((await response.json()).error || "Could not save body approval");
+        setReadApprovalStatus(request.id, approved ? "approved" : "denied");
+        if (approved) setRunning(true);
+      } catch (error) {
+        toast.error("Could not save approval", error instanceof Error ? error.message : String(error));
+      }
+    },
+    [setReadApprovalStatus, toast],
+  );
+  const approveRead = useCallback((request: ReadApproval) => void decideRead(request, true), [decideRead]);
   const newConversation = () => {
     if (running) return;
     turnGeneration.current += 1;
@@ -389,6 +449,124 @@ export function WorkspaceClient({
     setAgentModel(initialModel || null);
     clearConversationSnapshot();
   };
+  const conversation = useMemo(
+    () => (
+      <Conversation>
+        {entries.length === 0 && <ConversationEmpty />}
+        {entries.map((entry, index) => (
+          <div key={index}>
+            {entry.role && (
+              <Message role={entry.role}>
+                {entry.reasoning !== undefined && (
+                  <Reasoning text={entry.reasoning} active={running && index === entries.length - 1} />
+                )}
+                {entry.tools?.map((tool, toolIndex) => (
+                  <ToolCall key={toolIndex} {...tool} />
+                ))}
+                {entry.text &&
+                  (entry.role === "user" ? (
+                    <p style={{ whiteSpace: "pre-wrap", margin: "8px 0 0" }}>{entry.text}</p>
+                  ) : (
+                    <MarkdownContent>{entry.text}</MarkdownContent>
+                  ))}
+                {entry.artifact && (
+                  <Artifact title={entry.artifact.title}>
+                    {entry.artifact.kind === "draft" ? (
+                      <div className="artifact-review-row">
+                        <span>Saved locally as a draft.</span>
+                        <ArtifactReviewLink
+                          href={entry.artifact.review_url || `/drafts/${entry.artifact.id}`}
+                          label="Review draft"
+                          tooltip="Open this draft for review"
+                        />
+                      </div>
+                    ) : (
+                      <p>Saved locally as {entry.artifact.kind}.</p>
+                    )}
+                  </Artifact>
+                )}
+                {entry.rule && (
+                  <Artifact title={entry.rule.name}>
+                    <div className="artifact-review-row">
+                      <span>Saved as a disabled flow suggestion.</span>
+                      <ArtifactReviewLink
+                        href={`/flows/${entry.rule.id}`}
+                        label="Review flow"
+                        tooltip="Open this flow for review"
+                      />
+                    </div>
+                  </Artifact>
+                )}
+                {entry.readApproval && (
+                  <Artifact title="Message body access">
+                    <div className="body-access-request">
+                      <p>{entry.readApproval.reason}</p>
+                      <p>
+                        Approve only these {entry.readApproval.messages.length} message bodies for review, including
+                        read-only codemode.
+                        {entry.readApproval.scope && (
+                          <>
+                            {" "}
+                            Search snapshot: <strong>{entry.readApproval.scope.query}</strong> in{" "}
+                            {entry.readApproval.scope.account}
+                            {entry.readApproval.scope.total > entry.readApproval.messages.length && (
+                              <>
+                                {" "}
+                                ({entry.readApproval.messages.length} of {entry.readApproval.scope.total} matches)
+                              </>
+                            )}
+                            . New matches are not included.
+                          </>
+                        )}
+                      </p>
+                      <ul>
+                        {entry.readApproval.messages.map((message) => (
+                          <li key={`${message.account}:${message.folder || "INBOX"}:${message.uid}`}>
+                            <strong>{message.subject || "(no subject)"}</strong>
+                            <span>{message.sender || `${message.account} · UID ${message.uid}`}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {entry.readApproval.status === "pending" || !entry.readApproval.status ? (
+                        <div className="body-access-actions">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            tooltip="Continue without reading bodies"
+                            disabled={running}
+                            onClick={() => void decideRead(entry.readApproval!, false)}
+                          >
+                            <X size={14} /> Not now
+                          </Button>
+                          <Button
+                            size="sm"
+                            tooltip="Allow only this snapshot of message bodies, including codemode review"
+                            disabled={running}
+                            onClick={() => approveRead(entry.readApproval!)}
+                          >
+                            <Eye size={14} /> Approve and continue
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className={`body-access-decision ${entry.readApproval.status}`}>
+                          {entry.readApproval.status === "approved" ? <ShieldCheck size={14} /> : <X size={14} />}
+                          {entry.readApproval.status === "approved"
+                            ? "Approved for review, including codemode"
+                            : "Not approved"}
+                        </div>
+                      )}
+                    </div>
+                  </Artifact>
+                )}
+              </Message>
+            )}
+            {entry.status && <AgentTaskStatus {...entry.status} />}
+          </div>
+        ))}
+      </Conversation>
+    ),
+    [entries, running, decideRead, approveRead],
+  );
   const modelLabel = agentModel?.provider
     ? `${agentModel.provider} · ${agentModel.name || agentModel.id}`
     : agentModel?.name || "Automatic";
@@ -482,119 +660,7 @@ export function WorkspaceClient({
             <Badge tone={running ? "attention" : "good"}>{running ? "Running" : "Ready"}</Badge>
           </div>
         </div>
-        <Conversation>
-          {entries.length === 0 && <ConversationEmpty />}
-          {entries.map((entry, index) => (
-            <div key={index}>
-              {entry.role && (
-                <Message role={entry.role}>
-                  {entry.reasoning !== undefined && (
-                    <Reasoning text={entry.reasoning} active={running && index === entries.length - 1} />
-                  )}
-                  {entry.tools?.map((tool, toolIndex) => (
-                    <ToolCall key={toolIndex} {...tool} />
-                  ))}
-                  {entry.text &&
-                    (entry.role === "user" ? (
-                      <p style={{ whiteSpace: "pre-wrap", margin: "8px 0 0" }}>{entry.text}</p>
-                    ) : (
-                      <MarkdownContent>{entry.text}</MarkdownContent>
-                    ))}
-                  {entry.artifact && (
-                    <Artifact title={entry.artifact.title}>
-                      {entry.artifact.kind === "draft" ? (
-                        <div className="artifact-review-row">
-                          <span>Saved locally as a draft.</span>
-                          <ArtifactReviewLink
-                            href={entry.artifact.review_url || `/drafts/${entry.artifact.id}`}
-                            label="Review draft"
-                            tooltip="Open this draft for review"
-                          />
-                        </div>
-                      ) : (
-                        <p>Saved locally as {entry.artifact.kind}.</p>
-                      )}
-                    </Artifact>
-                  )}
-                  {entry.rule && (
-                    <Artifact title={entry.rule.name}>
-                      <div className="artifact-review-row">
-                        <span>Saved as a disabled flow suggestion.</span>
-                        <ArtifactReviewLink
-                          href={`/flows/${entry.rule.id}`}
-                          label="Review flow"
-                          tooltip="Open this flow for review"
-                        />
-                      </div>
-                    </Artifact>
-                  )}
-                  {entry.readApproval && (
-                    <Artifact title="Message body access">
-                      <div className="body-access-request">
-                        <p>{entry.readApproval.reason}</p>
-                        <p>
-                          Approve only these {entry.readApproval.messages.length} message bodies for review, including
-                          read-only codemode.
-                          {entry.readApproval.scope && (
-                            <>
-                              {" "}
-                              Search snapshot: <strong>{entry.readApproval.scope.query}</strong> in{" "}
-                              {entry.readApproval.scope.account}
-                              {entry.readApproval.scope.total > entry.readApproval.messages.length && (
-                                <>
-                                  {" "}
-                                  ({entry.readApproval.messages.length} of {entry.readApproval.scope.total} matches)
-                                </>
-                              )}
-                              . New matches are not included.
-                            </>
-                          )}
-                        </p>
-                        <ul>
-                          {entry.readApproval.messages.map((message) => (
-                            <li key={`${message.account}:${message.folder || "INBOX"}:${message.uid}`}>
-                              <strong>{message.subject || "(no subject)"}</strong>
-                              <span>{message.sender || `${message.account} · UID ${message.uid}`}</span>
-                            </li>
-                          ))}
-                        </ul>
-                        {entry.readApproval.status === "pending" || !entry.readApproval.status ? (
-                          <div className="body-access-actions">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              tooltip="Continue without reading bodies"
-                              disabled={running}
-                              onClick={() => void decideRead(entry.readApproval!, false)}
-                            >
-                              <X size={14} /> Not now
-                            </Button>
-                            <Button
-                              size="sm"
-                              tooltip="Allow only this snapshot of message bodies, including codemode review"
-                              disabled={running}
-                              onClick={() => approveRead(entry.readApproval!)}
-                            >
-                              <Eye size={14} /> Approve and continue
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className={`body-access-decision ${entry.readApproval.status}`}>
-                            {entry.readApproval.status === "approved" ? <ShieldCheck size={14} /> : <X size={14} />}
-                            {entry.readApproval.status === "approved"
-                              ? "Approved for review, including codemode"
-                              : "Not approved"}
-                          </div>
-                        )}
-                      </div>
-                    </Artifact>
-                  )}
-                </Message>
-              )}
-              {entry.status && <AgentTaskStatus {...entry.status} />}
-            </div>
-          ))}
-        </Conversation>
+        {conversation}
         <div className="prompt-wrap">
           <div style={{ display: "flex", gap: 8, marginBottom: 9 }}>
             <Button

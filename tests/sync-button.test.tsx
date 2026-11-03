@@ -11,6 +11,7 @@ vi.mock("@/lib/client-api", () => ({ apiJson, errorMessage: (error: Error) => er
 vi.mock("@/components/feedback", () => ({ useToast: () => toast }));
 
 class MockSocket {
+  readyState = 3;
   static current: MockSocket;
   onmessage?: (event: { data: string }) => void;
   close = vi.fn();
@@ -141,6 +142,7 @@ describe("header sync feedback", () => {
     expect(button().textContent).toContain("Synced 2/2");
     expect(toast.success).toHaveBeenCalledTimes(1);
     const calls = apiJson.mock.calls.length;
+    MockSocket.current.readyState = 1;
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(apiJson).toHaveBeenCalledTimes(calls);
   });

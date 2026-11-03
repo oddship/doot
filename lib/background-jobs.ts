@@ -6,13 +6,16 @@ import { validateMailboxPath } from "@/lib/imap-folder";
 import { normalizeMailActions, ruleActionFingerprint } from "@/lib/mail-actions";
 import { createMailboxProposal } from "@/lib/proposals";
 import { markRuleMatched, prepareRuleProposal, reconcileFolderRules } from "@/lib/rules";
+import { getSyncJob } from "@/lib/sync";
 
 const owner = process.env.DOOT_INSTANCE_ID || `process-${process.pid}`;
 const globals = globalThis as typeof globalThis & { __dootBackgroundDrain?: Promise<void> };
 
-function notify() {
+function notify(resource = "jobs", items?: any[]) {
   try {
-    (globalThis as any).__emailAgentBroadcast?.({ type: "cache.refresh", resource: "all" });
+    (globalThis as any).__emailAgentBroadcast?.({ type: "cache.refresh", resource, ...(items ? { items } : {}) });
+    if (resource === "jobs")
+      (globalThis as any).__emailAgentBroadcast?.({ type: "cache.refresh", resource: "history" });
   } catch {
     /* A view notification must never interrupt saved execution. */
   }
@@ -66,9 +69,13 @@ export function getBackgroundJob(id: string) {
 }
 export function listBackgroundJobs() {
   return {
-    jobs: (db.prepare("SELECT id FROM background_jobs ORDER BY created_at DESC LIMIT 30").all() as any[]).map((row) =>
-      getBackgroundJob(row.id),
-    ),
+    jobs: db
+      .prepare(`SELECT b.id,b.kind,b.status,b.history_id,b.error,b.updated_at,
+      COUNT(s.position) total,COALESCE(SUM(s.status='complete'),0) completed
+      FROM background_jobs b LEFT JOIN background_steps s ON s.job_id=b.id
+      WHERE b.status IN ('queued','running','needs_review') GROUP BY b.id
+      ORDER BY CASE b.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,b.created_at DESC LIMIT 30`)
+      .all(),
   };
 }
 
@@ -220,47 +227,64 @@ export function approveFolderMutation(account: string, operation: any, commandId
 }
 
 function finishJob(id: string, status: string, result: any, error?: string) {
-  db.transaction(() => {
-    const row = db.prepare("SELECT * FROM background_jobs WHERE id=?").get(id) as any;
-    if (!row) return;
-    db.prepare("UPDATE background_jobs SET status=?,result_json=?,error=?,updated_at=? WHERE id=?").run(
-      status,
-      JSON.stringify(result),
-      error || null,
-      now(),
-      id,
-    );
-    const payload = json<any>(row.payload_json, {});
-    if (row.kind === "mailbox")
-      db.prepare("UPDATE actions SET status=?,applied_at=? WHERE id=?").run(
-        status === "complete" ? "applied" : status,
+  const kind = db
+    .transaction(() => {
+      const row = db.prepare("SELECT * FROM background_jobs WHERE id=?").get(id) as any;
+      if (!row) return;
+      db.prepare("UPDATE background_jobs SET status=?,result_json=?,error=?,updated_at=? WHERE id=?").run(
+        status,
+        JSON.stringify(result),
+        error || null,
         now(),
-        payload.proposal_id,
+        id,
       );
-    if (row.kind === "draft" && status === "complete") {
-      // An edit made while APPEND was running must remain an unsaved local draft.
-      db.prepare("UPDATE agent_artifacts SET status='saved' WHERE id=? AND content_json=?").run(
-        payload.draft_id,
-        JSON.stringify(payload.content),
+      const payload = json<any>(row.payload_json, {});
+      if (row.kind === "mailbox")
+        db.prepare("UPDATE actions SET status=?,applied_at=? WHERE id=?").run(
+          status === "complete" ? "applied" : status,
+          now(),
+          payload.proposal_id,
+        );
+      if (row.kind === "draft" && status === "complete") {
+        // An edit made while APPEND was running must remain an unsaved local draft.
+        db.prepare("UPDATE agent_artifacts SET status='saved' WHERE id=? AND content_json=?").run(
+          payload.draft_id,
+          JSON.stringify(payload.content),
+        );
+      }
+      db.prepare("UPDATE agent_sessions SET status=?,error=?,updated_at=? WHERE id=?").run(
+        status === "complete" ? "complete" : "error",
+        error || null,
+        now(),
+        row.history_id,
       );
-    }
-    db.prepare("UPDATE agent_sessions SET status=?,error=?,updated_at=? WHERE id=?").run(
-      status === "complete" ? "complete" : "error",
-      error || null,
-      now(),
-      row.history_id,
-    );
-    db.prepare(
-      "INSERT INTO agent_events(session_id,event_type,content,metadata_json,created_at) VALUES(?,?,?,?,?)",
-    ).run(
-      row.history_id,
-      "background_job_finished",
-      status === "complete" ? "Approved work completed" : error || status,
-      JSON.stringify({ job_id: id, status, result }),
-      now(),
-    );
-  }).immediate();
+      db.prepare(
+        "INSERT INTO agent_events(session_id,event_type,content,metadata_json,created_at) VALUES(?,?,?,?,?)",
+      ).run(
+        row.history_id,
+        "background_job_finished",
+        status === "complete" ? "Approved work completed" : error || status,
+        JSON.stringify({ job_id: id, status, result }),
+        now(),
+      );
+      return row.kind;
+    })
+    .immediate();
   notify();
+  if (kind === "sync") {
+    notify("messages");
+    try {
+      (globalThis as any).__emailAgentBroadcast?.({ type: "sync.status", job: getSyncJob() });
+    } catch {
+      /* Views are optional. */
+    }
+  }
+  if (kind === "draft") notify("drafts");
+  if (kind === "folder") {
+    notify("folders");
+    notify("rules");
+    notify("messages");
+  }
 }
 
 export function cancelSavedAgentJobs(sessionId: string) {
@@ -365,6 +389,7 @@ async function executeJob(id: string) {
         }
       } else if (row.kind === "mailbox") {
         result = await applyMailboxActions([input.action], [input.item]);
+        notify("messages", result.results || []);
         if (result.status !== "applied") throw new Error(JSON.stringify(result));
       } else if (row.kind === "draft") result = await appendImapDraft(input.content.account, input.content);
       else if (row.kind === "folder") {
@@ -393,6 +418,14 @@ async function executeJob(id: string) {
         );
       }).immediate();
       notify();
+      if (row.kind === "sync") {
+        notify("messages");
+        try {
+          (globalThis as any).__emailAgentBroadcast?.({ type: "sync.status", job: getSyncJob() });
+        } catch {
+          /* Views are optional. */
+        }
+      }
     } catch (error: any) {
       if ((db.prepare("SELECT status FROM background_jobs WHERE id=?").get(id) as any)?.status === "cancelled") return;
       db.prepare("UPDATE background_steps SET status=?,error=? WHERE job_id=? AND position=?").run(

@@ -6,6 +6,7 @@ import { LocalTime } from "@/components/local-time";
 import { Badge, Card, Input } from "@/components/ui";
 import { apiJson } from "@/lib/client-api";
 import { navigateClient } from "@/lib/client-navigation";
+import { createRefreshQueue } from "@/lib/client-refresh";
 import { activityStatus, statusLabel, statusMatches, statusTone } from "@/lib/history-presentation";
 import { useCacheEvents } from "@/lib/use-cache-events";
 
@@ -20,14 +21,20 @@ const kinds: Record<string, { label: string; detail: string; tone: string }> = {
 export function HistoryScreen({ sessions: initialSessions }: { sessions: any[] }) {
   const [sessions, setSessions] = useState(initialSessions);
   const [refreshError, setRefreshError] = useState("");
+  const refresh = useMemo(
+    () =>
+      createRefreshQueue(() =>
+        apiJson<{ sessions: any[] }>("/api/agent/sessions", { cache: "no-store" })
+          .then((value) => {
+            setSessions(value.sessions);
+            setRefreshError("");
+          })
+          .catch(() => setRefreshError("Connection interrupted. Showing saved activity; retrying automatically.")),
+      ),
+    [],
+  );
   useCacheEvents((event) => {
-    if (event.type === "cache.refresh")
-      void apiJson<{ sessions: any[] }>("/api/agent/sessions", { cache: "no-store" })
-        .then((value) => {
-          setSessions(value.sessions);
-          setRefreshError("");
-        })
-        .catch(() => setRefreshError("Connection interrupted. Showing saved activity; retrying automatically."));
+    if (event.type === "cache.refresh" && ["all", "history"].includes(event.resource)) void refresh();
   });
   const [kind, setKind] = useState("all");
   const [status, setStatus] = useState("all");

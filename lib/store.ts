@@ -753,6 +753,16 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       break;
     }
     case "session-list":
+      if (rest.includes("--running")) {
+        result = {
+          sessions: db
+            .prepare(
+              "SELECT id,title,status,history_kind,model_provider,model_id,updated_at FROM agent_sessions WHERE history_kind='agent' AND status='running' ORDER BY updated_at DESC LIMIT 1",
+            )
+            .all(),
+        };
+        break;
+      }
       result = {
         sessions: db
           .prepare(

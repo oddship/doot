@@ -7,6 +7,7 @@ import nextEnv from "@next/env";
 import Database from "better-sqlite3";
 import next from "next";
 import { WebSocketServer } from "ws";
+import { createCacheBroadcaster } from "./lib/cache-notifications.mjs";
 import { createRequestPolicy, requestSecurityError } from "./lib/request-security.mjs";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -69,7 +70,7 @@ const sockets = new Set();
 const schedulerToken = randomUUID();
 globalThis.__dootSchedulerToken = schedulerToken;
 
-globalThis.__emailAgentBroadcast = (event) => {
+globalThis.__emailAgentBroadcast = createCacheBroadcaster((event) => {
   const encoded = JSON.stringify(event);
   for (const socket of sockets) {
     if (socket.readyState !== 1) continue;
@@ -81,7 +82,7 @@ globalThis.__emailAgentBroadcast = (event) => {
       sockets.delete(socket);
     }
   }
-};
+});
 
 const wss = new WebSocketServer({ noServer: true });
 wss.on("connection", (socket) => {
@@ -103,6 +104,7 @@ server.on("upgrade", (request, socket, head) => {
   wss.handleUpgrade(request, socket, head, (client) => wss.emit("connection", client, request));
 });
 const close = (signal) => {
+  globalThis.__emailAgentBroadcast.close();
   console.log(`Received ${signal}; shutting down Doot.`);
   if (schedulerTimer) clearInterval(schedulerTimer);
   wss.close();

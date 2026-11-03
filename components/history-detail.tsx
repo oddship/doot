@@ -1,13 +1,14 @@
 "use client";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { WorkspaceBoundary } from "@/components/generated-workspace";
 import { HistoryProposalAction } from "@/components/history-proposal-action";
 import { LocalTime } from "@/components/local-time";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Badge, Card, cn } from "@/components/ui";
 import { apiJson } from "@/lib/client-api";
+import { createRefreshQueue } from "@/lib/client-refresh";
 import { historyEventLabel } from "@/lib/history-display";
 import { activityStatus, statusLabel, statusTone } from "@/lib/history-presentation";
 import { useCacheEvents } from "@/lib/use-cache-events";
@@ -35,18 +36,25 @@ export function HistoryDetailView({ initialData, initialProposal }: { initialDat
   const [data, setData] = useState(initialData);
   const [proposal, setProposal] = useState(initialProposal);
   const [refreshError, setRefreshError] = useState("");
+  const [logOpen, setLogOpen] = useState(false);
+  const refresh = useMemo(
+    () =>
+      createRefreshQueue(() =>
+        apiJson<any>(`/api/agent/sessions/${initialData.session.id}`, { cache: "no-store" })
+          .then(async (next) => {
+            setData(next);
+            setRefreshError("");
+            const source =
+              next.job?.source?.proposal_id ||
+              next.events.findLast((item: any) => item.metadata?.proposal_id)?.metadata.proposal_id;
+            if (source) setProposal((await apiJson<any>(`/api/proposals/${source}`, { cache: "no-store" })).proposal);
+          })
+          .catch(() => setRefreshError("Connection interrupted. Showing saved results; retrying automatically.")),
+      ),
+    [initialData.session.id],
+  );
   useCacheEvents((event) => {
-    if (event.type !== "cache.refresh") return;
-    void apiJson<any>(`/api/agent/sessions/${initialData.session.id}`, { cache: "no-store" })
-      .then(async (next) => {
-        setData(next);
-        setRefreshError("");
-        const source =
-          next.job?.source?.proposal_id ||
-          next.events.findLast((item: any) => item.metadata?.proposal_id)?.metadata.proposal_id;
-        if (source) setProposal((await apiJson<any>(`/api/proposals/${source}`, { cache: "no-store" })).proposal);
-      })
-      .catch(() => setRefreshError("Connection interrupted. Showing saved results; retrying automatically."));
+    if (event.type === "cache.refresh" && ["all", "history"].includes(event.resource)) void refresh();
   });
   const isJob = data.session.history_kind === "job";
   const isAgent = data.session.history_kind === "agent";
@@ -160,28 +168,29 @@ export function HistoryDetailView({ initialData, initialProposal }: { initialDat
       )}
       <div className={cn("history-grid history-detail-layout", !hasSummary && "history-grid-single")}>
         <Card className="history-detail">
-          <details className="history-execution-log">
+          <details className="history-execution-log" onToggle={(event) => setLogOpen(event.currentTarget.open)}>
             <summary>Execution log · {data.events.length} events</summary>
-            {data.events.map((event: any) => (
-              <div className="event" key={event.id}>
-                <div className="event-head">
-                  <strong>{historyEventLabel(event.event_type)}</strong>
-                  <LocalTime value={event.created_at} display="time" />
+            {logOpen &&
+              data.events.map((event: any) => (
+                <div className="event" key={event.id}>
+                  <div className="event-head">
+                    <strong>{historyEventLabel(event.event_type)}</strong>
+                    <LocalTime value={event.created_at} display="time" />
+                  </div>
+                  {event.content &&
+                    (["assistant_message", "reasoning"].includes(event.event_type) ? (
+                      <MarkdownContent>{event.content}</MarkdownContent>
+                    ) : (
+                      <div className="event-content">{event.content}</div>
+                    ))}
+                  {Object.keys(event.metadata || {}).length > 0 && (
+                    <details>
+                      <summary className="muted">Event metadata</summary>
+                      <pre style={{ overflow: "auto", fontSize: 11 }}>{JSON.stringify(event.metadata, null, 2)}</pre>
+                    </details>
+                  )}
                 </div>
-                {event.content &&
-                  (["assistant_message", "reasoning"].includes(event.event_type) ? (
-                    <MarkdownContent>{event.content}</MarkdownContent>
-                  ) : (
-                    <div className="event-content">{event.content}</div>
-                  ))}
-                {Object.keys(event.metadata || {}).length > 0 && (
-                  <details>
-                    <summary className="muted">Event metadata</summary>
-                    <pre style={{ overflow: "auto", fontSize: 11 }}>{JSON.stringify(event.metadata, null, 2)}</pre>
-                  </details>
-                )}
-              </div>
-            ))}
+              ))}
           </details>
         </Card>
         {hasSummary && (

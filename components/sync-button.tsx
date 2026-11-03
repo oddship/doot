@@ -3,7 +3,9 @@ import { LoaderCircle } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/feedback";
 import { Button } from "@/components/ui";
+import { cacheEventsConnected } from "@/lib/cache-events";
 import { apiJson, errorMessage } from "@/lib/client-api";
+import { useCacheEvents } from "@/lib/use-cache-events";
 
 type SyncAccount = { status: "waiting" | "syncing" | "done" | "error"; error?: string };
 type SyncJob = { id: string | null; status: "idle" | "running" | "done"; accounts: SyncAccount[] };
@@ -75,24 +77,19 @@ export function SyncButton({ icon }: { icon: ReactNode }) {
     [showJob, toast],
   );
 
+  useCacheEvents((value) => {
+    if (value.type === "sync.status") showJob(value.job);
+    if (value.type === "cache.refresh" && ["all"].includes(value.resource)) {
+      if (busy.current && !cacheEventsConnected()) return;
+      const currentVersion = version.current;
+      void apiJson<SyncJob>("/api/sync", { cache: "no-store" })
+        .then((job) => {
+          if (version.current === currentVersion) showJob(job);
+        })
+        .catch(() => {});
+    }
+  });
   useEffect(() => {
-    const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
-    socket.onmessage = (event) => {
-      try {
-        const value = JSON.parse(event.data);
-        if (value.type === "sync.status") showJob(value.job);
-        if (value.type === "cache.refresh" && ["all", "messages"].includes(value.resource)) {
-          const currentVersion = version.current;
-          void apiJson<SyncJob>("/api/sync", { cache: "no-store" })
-            .then((job) => {
-              if (mounted && version.current === currentVersion) showJob(job);
-            })
-            .catch(() => {});
-        }
-      } catch {
-        // Ignore malformed/unrelated frames; HTTP polling recovers sync progress.
-      }
-    };
     let mounted = true;
     const initialVersion = version.current;
     void apiJson<SyncJob>("/api/sync", { cache: "no-store" })
@@ -102,7 +99,6 @@ export function SyncButton({ icon }: { icon: ReactNode }) {
       .catch(() => {});
     return () => {
       mounted = false;
-      socket.close();
     };
   }, [showJob, sync]);
 
@@ -111,7 +107,7 @@ export function SyncButton({ icon }: { icon: ReactNode }) {
     let mounted = true;
     let pending = false;
     const timer = window.setInterval(async () => {
-      if (pending) return;
+      if (pending || cacheEventsConnected() || document.visibilityState !== "visible") return;
       pending = true;
       const readVersion = version.current;
       try {

@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiJson } from "@/lib/client-api";
+import { createRefreshQueue } from "@/lib/client-refresh";
 import { useCacheEvents } from "@/lib/use-cache-events";
 
 type Job = {
@@ -15,17 +16,20 @@ type Job = {
 };
 export function BackgroundJobStatus() {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const load = () =>
-    apiJson<{ jobs: Job[] }>("/api/jobs", { cache: "no-store" })
-      .then((value) => setJobs(value.jobs))
-      .catch(() => {});
+  const load = useMemo(
+    () =>
+      createRefreshQueue(() =>
+        apiJson<{ jobs: Job[] }>("/api/jobs", { cache: "no-store" })
+          .then((value) => setJobs(value.jobs))
+          .catch(() => {}),
+      ),
+    [],
+  );
   useCacheEvents((event) => {
-    if (event.type === "cache.refresh") void load();
+    if (event.type === "cache.refresh" && ["all", "jobs"].includes(event.resource)) void load();
   });
   useEffect(() => {
     void load();
-    const timer = setInterval(() => void load(), 5000);
-    return () => clearInterval(timer);
   }, []);
   const active = jobs.filter((job) => ["queued", "running", "needs_review"].includes(job.status));
   if (!active.length) return null;

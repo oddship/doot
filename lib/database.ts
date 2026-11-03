@@ -57,6 +57,7 @@ function openDatabase() {
       PRIMARY KEY(job_id,position),
       FOREIGN KEY(job_id) REFERENCES background_jobs(id) ON DELETE CASCADE);
     CREATE INDEX IF NOT EXISTS background_jobs_status ON background_jobs(status,created_at);
+    CREATE INDEX IF NOT EXISTS background_jobs_history ON background_jobs(history_id,created_at DESC);
     CREATE TABLE IF NOT EXISTS email_accounts (
       name TEXT PRIMARY KEY, host TEXT NOT NULL, username TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL, port INTEGER NOT NULL DEFAULT 993,
