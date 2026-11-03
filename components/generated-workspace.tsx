@@ -1,6 +1,6 @@
 "use client";
 import { Archive, ExternalLink, FolderInput, Trash2 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { memo, type ReactNode, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { Badge, Button, Card, cn } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
@@ -352,7 +352,7 @@ function GeneratedWorkspaceView({ workspace }: { workspace: GeneratedWorkspace }
   );
 }
 
-export function WorkspaceBoundary({ value }: { value: unknown }) {
+export const WorkspaceBoundary = memo(function WorkspaceBoundary({ value }: { value: unknown }) {
   const parsed = generatedWorkspaceSchema.safeParse(value);
   if (!parsed.success)
     return (
@@ -365,4 +365,4 @@ export function WorkspaceBoundary({ value }: { value: unknown }) {
       </Card>
     );
   return <GeneratedWorkspaceView workspace={parsed.data} />;
-}
+});

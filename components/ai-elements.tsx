@@ -1,21 +1,38 @@
 "use client";
 import { Brain, CheckCircle2, LoaderCircle, Paperclip, Send, Wrench, XCircle } from "lucide-react";
 import Image from "next/image";
-import { type FormEvent, type ReactNode, useLayoutEffect, useRef } from "react";
+import { type FormEvent, memo, type ReactNode, useEffect, useRef } from "react";
 import { Button, Card, cn, Textarea } from "@/components/ui";
 
 export function Conversation({ children }: { children: ReactNode }) {
   const container = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
-  useLayoutEffect(() => {
+  useEffect(() => {
     const element = container.current;
-    if (element && followLatest.current) element.scrollTop = element.scrollHeight;
-  }, [children]);
+    if (!element) return;
+    let frame: number | undefined;
+    const follow = () => {
+      if (frame !== undefined || !followLatest.current) return;
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        element.scrollTop = element.scrollHeight;
+      });
+    };
+    const observer = new MutationObserver(follow);
+    observer.observe(element, { childList: true, subtree: true, characterData: true });
+    follow();
+    return () => {
+      observer.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
+  }, []);
   return (
     <div
       ref={container}
       className="conversation"
-      aria-live="polite"
+      role="log"
+      aria-live="off"
+      aria-label="Conversation history"
       onScroll={() => {
         const element = container.current;
         if (element) followLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
@@ -53,7 +70,7 @@ export function Reasoning({ text, active }: { text?: string; active?: boolean })
     </details>
   );
 }
-export function ToolCall({
+export const ToolCall = memo(function ToolCall({
   name,
   state,
   detail,
@@ -82,10 +99,11 @@ export function ToolCall({
       )}
     </Card>
   );
-}
+});
+
 export function TaskStatus({ status, detail }: { status: string; detail: ReactNode }) {
   return (
-    <div className={cn("task-status", `task-${status}`)}>
+    <div className={cn("task-status", `task-${status}`)} role="status" aria-live="polite">
       {status === "running" || status === "tool" ? (
         <LoaderCircle className="spin" size={15} />
       ) : status === "error" ? (
@@ -123,7 +141,7 @@ export function PromptInput({
 }) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    onSubmit();
+    if (!disabled && value.trim()) onSubmit();
   };
   return (
     <form className="prompt-box" onSubmit={submit}>
@@ -133,9 +151,9 @@ export function PromptInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
+          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
             event.preventDefault();
-            onSubmit();
+            if (!disabled && value.trim()) onSubmit();
           }
         }}
       />

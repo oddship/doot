@@ -57,10 +57,18 @@ export function Tooltip({
   side?: "top" | "bottom";
   children: React.ReactNode;
 }) {
+  const id = React.useId();
+  const child = React.isValidElement(children)
+    ? (children as React.ReactElement<{ "aria-describedby"?: string }>)
+    : null;
   return (
     <span className="tooltip-root" data-side={side}>
-      {children}
-      <span className="tooltip-content" role="tooltip">
+      {child
+        ? React.cloneElement(child, {
+            "aria-describedby": [child.props["aria-describedby"], id].filter(Boolean).join(" "),
+          })
+        : children}
+      <span id={id} className="tooltip-content" role="tooltip">
         {content}
       </span>
     </span>
@@ -78,53 +86,47 @@ export function Label(props: React.LabelHTMLAttributes<HTMLLabelElement>) {
 export function Skeleton({ className }: { className?: string }) {
   return <div className={cn("skeleton", className)} />;
 }
-export function Dialog({
-  open,
-  title,
-  children,
-  onClose,
-  closeDisabled = false,
+export { Dialog } from "@/components/dialog";
+export function Tabs({
+  tabs,
+  value,
+  onChange,
+  id,
 }: {
-  open: boolean;
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-  closeDisabled?: boolean;
+  tabs: string[];
+  value: string;
+  onChange: (value: string) => void;
+  id?: string;
 }) {
-  if (!open) return null;
-  return (
-    <div
-      className="dialog-backdrop"
-      role="presentation"
-      onMouseDown={(e) => e.target === e.currentTarget && !closeDisabled && onClose()}
-    >
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={title}>
-        <div className="dialog-head">
-          <h2>{title}</h2>
-          <Button
-            variant="ghost"
-            tooltip={closeDisabled ? undefined : "Close this dialog"}
-            tooltipSide="top"
-            disabled={closeDisabled}
-            onClick={onClose}
-          >
-            Close
-          </Button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-export function Tabs({ tabs, value, onChange }: { tabs: string[]; value: string; onChange: (value: string) => void }) {
+  const generatedId = React.useId();
+  const base = id || generatedId;
   return (
     <div className="tabs" role="tablist">
-      {tabs.map((tab) => (
+      {tabs.map((tab, index) => (
         <button
           type="button"
           key={tab}
           role="tab"
+          id={`${base}-tab-${index}`}
           aria-selected={value === tab}
+          aria-controls={`${base}-panel-${index}`}
+          tabIndex={value === tab ? 0 : -1}
+          onKeyDown={(event) => {
+            const target =
+              event.key === "ArrowRight"
+                ? (index + 1) % tabs.length
+                : event.key === "ArrowLeft"
+                  ? (index + tabs.length - 1) % tabs.length
+                  : event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? tabs.length - 1
+                      : -1;
+            if (target < 0) return;
+            event.preventDefault();
+            onChange(tabs[target]);
+            document.getElementById(`${base}-tab-${target}`)?.focus();
+          }}
           className={value === tab ? "active" : ""}
           onClick={() => onChange(tab)}
         >

@@ -1,7 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-export function MarkdownContent({ children }: { children: string }) {
+export const MarkdownContent = memo(function MarkdownContent({ children }: { children: string }) {
   return (
     <div className="markdown-content">
       <ReactMarkdown
@@ -19,4 +19,6 @@ export function MarkdownContent({ children }: { children: string }) {
       </ReactMarkdown>
     </div>
   );
-}
+});
+
+import { memo } from "react";
