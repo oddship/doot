@@ -45,7 +45,7 @@
     "@earendil-works/pi-durable": "1.0.3",
     "@next/env": "16.4.5",
     "better-sqlite3": "13.0.3",
-    "imapflow": "1.7.1",
+    "imapflow": "1.7.6",
     "lucide-react": "1.33.0",
     "next": "16.4.5",
     "postal-mime": "4.2.0",
