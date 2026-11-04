@@ -140,6 +140,8 @@ const warmMessageReaders = async () => {
       accounts.slice(0, 12).map((account) =>
         fetch(`http://${hostname}:${port}/api/accounts/${encodeURIComponent(account.name)}/warm`, {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
         }),
       ),
     );

@@ -210,20 +210,25 @@ async function withReusableReadMailbox<T>(
   }
 }
 
-export async function warmMessageReader(accountName: string) {
-  const pending = warmOperations.get(accountName);
+export async function warmMessageReader(accountName: string, folder = "INBOX") {
+  validateMailboxPath(folder);
+  const key = JSON.stringify([accountName, folder]);
+  const pending = warmOperations.get(key);
   if (pending) return pending;
   const account = accountByName(accountName);
   if (!account) throw new Error("unknown account");
-  const operation = withReusableReadMailbox(account, "INBOX", async () => ({
+  const existing = readSessions.get(`${accountName}\n${folder}`);
+  if (!existing && [...readSessions.values()].filter((session) => session.account === accountName).length >= 2)
+    return { ok: true, account: accountName, warm: false };
+  const operation = withReusableReadMailbox(account, folder, async () => ({
     ok: true,
     account: accountName,
     warm: true,
   }));
-  warmOperations.set(accountName, operation);
+  warmOperations.set(key, operation);
   void operation.then(
-    () => warmOperations.delete(accountName),
-    () => warmOperations.delete(accountName),
+    () => warmOperations.delete(key),
+    () => warmOperations.delete(key),
   );
   return operation;
 }

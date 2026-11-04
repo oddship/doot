@@ -23,7 +23,18 @@ export const handleAccountRoutes: ApiRouteHandler = async ({ request, path, key,
 
   const name = decodeURIComponent(path[1]);
   if (path[2] === "test" && method === "POST") return Response.json(await store(["account-test", name]));
-  if (path[2] === "warm" && method === "POST") return Response.json(await store(["account-warm", name]));
+  if (path[2] === "warm" && method === "POST") {
+    const empty =
+      !request.headers.get("content-type") &&
+      !request.headers.get("transfer-encoding") &&
+      [null, "0"].includes(request.headers.get("content-length"));
+    const value = empty ? {} : await requestBody(request);
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new RouteError("Invalid reader options", 400);
+    if (value.folder !== undefined && (typeof value.folder !== "string" || !value.folder || value.folder.length > 500))
+      throw new RouteError("Invalid folder", 400);
+    return Response.json(await store(["account-warm", name, value.folder || "INBOX"]));
+  }
   if (path[2] === "folders" && method === "GET") return Response.json(await store(["account-folders", name]));
   if (path[2] === "folders" && ["POST", "PUT", "DELETE"].includes(method)) {
     const value = await confirmedBody(request, "Explicit confirmation is required for every IMAP folder write");

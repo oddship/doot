@@ -57,7 +57,9 @@ vi.mock("imapflow", () => ({
 const directory = mkdtempSync(path.join(tmpdir(), "doot-body-batch-"));
 process.env.DOOT_DATABASE_PATH = path.join(directory, "cache.sqlite3");
 const { db } = await import("@/lib/database");
-const { readMessages, readMessage, closeAccountReadSessions, applyMailboxActions } = await import("@/lib/imap");
+const { readMessages, readMessage, closeAccountReadSessions, applyMailboxActions, warmMessageReader } = await import(
+  "@/lib/imap"
+);
 db.prepare("INSERT INTO email_accounts(name,host,username,password,created_at,updated_at) VALUES(?,?,?,?,?,?)").run(
   "work",
   "imap.example.test",
@@ -226,6 +228,24 @@ describe("cache-first coalesced IMAP body reads", () => {
     }
   });
 
+  it("limits speculative warm connections to two folders per account", async () => {
+    await warmMessageReader("work", "INBOX");
+    await warmMessageReader("work", "Archive");
+    expect(await warmMessageReader("work", "Another")).toMatchObject({ warm: false });
+    expect(fake.clients).toHaveLength(2);
+    expect(fake.clients.every((client) => client.fetchAll.mock.calls.length === 0)).toBe(true);
+  });
+  it("warms the requested folder without reading bodies and reuses it for an open", async () => {
+    seed(1, "Archive");
+    await warmMessageReader("work", "Archive");
+    expect(fake.clients).toHaveLength(1);
+    expect(fake.clients[0].fetchAll).not.toHaveBeenCalled();
+    expect(fake.clients[0].getMailboxLock).toHaveBeenCalledWith("Archive", expect.objectContaining({ readOnly: true }));
+    await readMessage("work", "1", "Archive");
+    expect(fake.clients).toHaveLength(1);
+    expect(fake.clients[0].connect).toHaveBeenCalledOnce();
+    expect(db.prepare("SELECT unread FROM messages WHERE folder='Archive' AND uid='1'").get()).toEqual({ unread: 1 });
+  });
   it("fetches five bodies in one mailbox lock with two commands, preserves order and unread state", async () => {
     seed(5);
     const result = await readMessages(refs(5));

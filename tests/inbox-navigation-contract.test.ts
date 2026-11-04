@@ -91,16 +91,17 @@ describe("Inbox deep links", () => {
     expect(runtime).toContain("Treat it as the baseline when they ask to narrow, broaden");
   });
 
-  it("warms reusable readers outside the Inbox render lifecycle", async () => {
+  it("warms reusable readers at startup and on reader intent", async () => {
     const inbox = await readFile("components/inbox-client.tsx", "utf8");
     const page = await readFile("app/inbox/page.tsx", "utf8");
     const routes = await readFile("lib/api/account-routes.ts", "utf8");
     const server = await readFile("server.mjs", "utf8");
     const imap = await readFile("lib/imap.ts", "utf8");
-    expect(inbox).not.toContain("/warm");
+    expect(inbox).toContain("/warm");
+    expect(inbox).toContain("onPrepare={prepareReader}");
     expect(page).not.toContain("account-warm");
     expect(routes).toContain('path[2] === "warm"');
-    expect(routes).toContain('store(["account-warm", name])');
+    expect(routes).toContain('store(["account-warm", name, value.folder || "INBOX"])');
     expect(server).toContain("warmMessageReaders");
     expect(imap).toContain("warmOperations");
   });

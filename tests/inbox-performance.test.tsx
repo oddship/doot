@@ -108,6 +108,41 @@ describe("responsive Inbox requests and rendering", () => {
     expect(boxes[0].checked).toBe(false);
     expect(boxes[1].checked).toBe(true);
   });
+  it("reopens a viewed message without another body request and invalidates it after a sync", async () => {
+    apiJson.mockResolvedValue({ body_text: "Cached reader body" });
+    await render();
+    await open(0);
+    await open(1);
+    expect(apiJson).toHaveBeenCalledTimes(2);
+    await open(0);
+    expect(apiJson).toHaveBeenCalledTimes(2);
+    expect(container.querySelector(".plain-content")?.textContent).toBe("Cached reader body");
+    apiJson.mockResolvedValueOnce(initial).mockResolvedValue({ body_text: "Fresh reader body" });
+    await act(async () => Socket.instances[0].send({ type: "cache.refresh", resource: "messages" }));
+    await open(0);
+    expect(apiJson).toHaveBeenCalledTimes(4);
+    expect(container.querySelector(".plain-content")?.textContent).toBe("Fresh reader body");
+  });
+  it("does not retain responses that allow remote images", async () => {
+    apiJson.mockResolvedValue({ body_text: "Viewed with images allowed", remote_images_allowed: true });
+    await render();
+    await open(0);
+    await open(1);
+    await open(0);
+    expect(apiJson).toHaveBeenCalledTimes(3);
+  });
+  it("warms only the exact mailbox on intent, without requesting message bodies", async () => {
+    apiJson.mockResolvedValue({ ok: true });
+    const uncached = { ...initial, messages: mails.map((mail) => ({ ...mail, body_fetched: 0, folder: "Archive" })) };
+    await act(async () => root.render(<InboxClient accounts={[]} initial={uncached} />));
+    const buttons = container.querySelectorAll<HTMLButtonElement>(".mail-open");
+    await act(async () => {
+      buttons[0].focus();
+      buttons[1].focus();
+    });
+    expect(apiJson).toHaveBeenCalledOnce();
+    expect(apiJson).toHaveBeenCalledWith("/api/accounts/work/warm", { method: "POST", json: { folder: "Archive" } });
+  });
   it("does not reconnect or rerender unchanged mail rows while typing a draft search", async () => {
     await render("from:sender@example.test");
     const renders = localTime.mock.calls.length;

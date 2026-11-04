@@ -27,6 +27,7 @@ import { reuseMailRows } from "@/lib/client-mail-rows";
 import { navigateClient, replaceClientUrl } from "@/lib/client-navigation";
 import { saveSelectedSearch } from "@/lib/client-search-selection";
 import { loadSelectedIds, saveSelectedIds, selectedMessageId, selectedMessageRef } from "@/lib/client-selection";
+import { MessageReaderCache } from "@/lib/message-reader-cache";
 import { paginationItems } from "@/lib/pagination";
 import { useCacheEvents } from "@/lib/use-cache-events";
 
@@ -47,12 +48,14 @@ const MailRow = memo(function MailRow({
   selected,
   onOpen,
   onToggle,
+  onPrepare,
 }: {
   mail: Mail;
   active: boolean;
   selected: boolean;
   onOpen: (mail: Mail) => void;
   onToggle: (mail: Mail) => void;
+  onPrepare: (mail: Mail) => void;
 }) {
   return (
     <div className={`mail-item ${active ? "active" : ""}`} onClick={() => onOpen(mail)}>
@@ -66,6 +69,9 @@ const MailRow = memo(function MailRow({
       <button
         type="button"
         className="mail-open"
+        onPointerEnter={() => onPrepare(mail)}
+        onPointerDown={() => onPrepare(mail)}
+        onFocus={() => onPrepare(mail)}
         aria-label={`Open ${mail.subject || "message"}`}
         aria-pressed={active}
       >
@@ -107,6 +113,21 @@ export function InboxClient({
   const [searchLoading, setSearchLoading] = useState(false);
   const searches = useRef(new LatestRequest());
   const bodies = useRef(new LatestRequest());
+  const readerCache = useRef(new MessageReaderCache());
+  const readerCacheVersion = useRef(0);
+  const warmReaders = useRef(new Map<string, number>());
+  const prepareReader = useCallback((mail: Mail) => {
+    if (mail.body_fetched) return;
+    const key = JSON.stringify([mail.account, mail.folder]);
+    if ((warmReaders.current.get(key) || 0) > Date.now()) return;
+    warmReaders.current.set(key, Date.now() + 60_000);
+    void apiJson(`/api/accounts/${encodeURIComponent(mail.account)}/warm`, {
+      method: "POST",
+      json: { folder: mail.folder },
+    }).catch(() => {
+      warmReaders.current.delete(key);
+    });
+  }, []);
   const searchBusy = useRef(false);
   const refreshPending = useRef(false);
   const reader = useRef<Mail | null>(null);
@@ -211,7 +232,12 @@ export function InboxClient({
     }
   };
   useCacheEvents((value) => {
-    if (value.type !== "cache.refresh" || !["all", "messages"].includes(value.resource)) return;
+    if (value.type !== "cache.refresh") return;
+    if (["all", "messages", "settings", "accounts"].includes(value.resource)) {
+      readerCache.current.clear();
+      readerCacheVersion.current++;
+    }
+    if (!["all", "messages"].includes(value.resource)) return;
     const affected = new Set(
       (Array.isArray(value.items) ? value.items : [])
         .filter((item: any) => item.cache_hidden !== false)
@@ -236,6 +262,14 @@ export function InboxClient({
   });
   const fetchMessage = useCallback(async (mail: Mail, remote = false) => {
     const request = bodies.current.begin();
+    const key = selectedMessageId(mail);
+    const cached = !remote && readerCache.current.get(key);
+    if (cached) {
+      setDetail(cached);
+      setLoading(false);
+      return;
+    }
+    const cacheVersion = readerCacheVersion.current;
     setLoading(true);
     try {
       const value = await apiJson(
@@ -243,7 +277,11 @@ export function InboxClient({
         { signal: request.signal },
         "Could not load message",
       );
-      if (request.current()) setDetail(value);
+      if (request.current()) {
+        if (!remote && !value.remote_images_allowed && cacheVersion === readerCacheVersion.current)
+          readerCache.current.set(key, value);
+        setDetail(value);
+      }
     } catch (error) {
       if (request.current()) setDetail({ error: errorMessage(error, "Could not load message") });
     } finally {
@@ -530,6 +568,7 @@ export function InboxClient({
                   selected={selectedIds.has(id)}
                   onOpen={openMessage}
                   onToggle={toggle}
+                  onPrepare={prepareReader}
                 />
               );
             })}

@@ -275,7 +275,7 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       result = await testAccount(required(rest[0], "account is required"));
       break;
     case "account-warm":
-      result = await warmMessageReader(required(rest[0], "account is required"));
+      result = await warmMessageReader(required(rest[0], "account is required"), rest[1] || "INBOX");
       break;
     case "account-folders":
       result = await discoverAccountFolders(required(rest[0], "account is required"));
