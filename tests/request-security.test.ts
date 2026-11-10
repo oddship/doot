@@ -56,6 +56,57 @@ describe("local request boundaries", () => {
     expect(requestSecurityError(headers, policy)).toBe("A trusted request origin is required");
   });
 
+  it.each(["GET", "HEAD"])("permits an origin-less cross-site %s document navigation", (method) => {
+    const headers = new Headers({
+      host: "127.0.0.1:8765",
+      "sec-fetch-site": "cross-site",
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-dest": "document",
+    });
+    expect(requestSecurityError(headers, createRequestPolicy({}), false, method)).toBeNull();
+  });
+
+  it.each(["POST", "PUT", "PATCH", "DELETE", ""])("rejects cross-site %s even with navigation metadata", (method) => {
+    const headers = new Headers({
+      host: "127.0.0.1:8765",
+      "sec-fetch-site": "cross-site",
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-dest": "document",
+    });
+    expect(requestSecurityError(headers, createRequestPolicy({}), false, method)).not.toBeNull();
+  });
+
+  it.each([
+    ["navigate", "iframe"],
+    ["cors", "empty"],
+    ["no-cors", "image"],
+    ["", "document"],
+  ])("rejects cross-site %s/%s subrequests without an Origin", (mode, destination) => {
+    const headers = new Headers({
+      host: "127.0.0.1:8765",
+      "sec-fetch-site": "cross-site",
+      "sec-fetch-mode": mode,
+      "sec-fetch-dest": destination,
+    });
+    expect(requestSecurityError(headers, createRequestPolicy({}), false, "GET")).not.toBeNull();
+  });
+
+  it("keeps host, Origin and WebSocket checks on document navigations", () => {
+    const policy = createRequestPolicy({});
+    const headers = new Headers({
+      host: "127.0.0.1:8765",
+      "sec-fetch-site": "cross-site",
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-dest": "document",
+    });
+    expect(requestSecurityError(headers, policy, true, "GET")).not.toBeNull();
+    headers.set("origin", "https://attacker.example");
+    expect(requestSecurityError(headers, policy, false, "GET")).toBe("Untrusted request origin");
+    headers.delete("origin");
+    headers.set("host", "attacker.example");
+    expect(requestSecurityError(headers, policy, false, "GET")).toBe("Untrusted request host");
+  });
+
   it("requires an exact trusted Origin on WebSocket upgrades", () => {
     const headers = new Headers({ host: "127.0.0.1:8765" });
     const policy = createRequestPolicy({});

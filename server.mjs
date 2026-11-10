@@ -58,7 +58,7 @@ const requestHeaders = (request) => ({
   },
 });
 const server = http.createServer((request, response) => {
-  const error = requestSecurityError(requestHeaders(request), requestPolicy);
+  const error = requestSecurityError(requestHeaders(request), requestPolicy, false, request.method);
   if (error) {
     response.writeHead(403, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ error }));

@@ -4,4 +4,5 @@ export function requestSecurityError(
   headers: Pick<Headers, "get">,
   policy: RequestPolicy,
   websocket?: boolean,
+  method?: string,
 ): string | null;
