@@ -75,6 +75,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   Socket.instances = [];
   localStorage.clear();
+  window.history.replaceState(null, "", "/inbox");
+  replaceClientUrl.mockImplementation((path: string) => window.history.replaceState(window.history.state, "", path));
   vi.stubGlobal("WebSocket", Socket);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -87,10 +89,94 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   localStorage.clear();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe("responsive Inbox requests and rendering", () => {
+  it("uses a mobile reader history entry and restores the exact list context, scroll and focus", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true })),
+    );
+    vi.stubGlobal("scrollY", 640);
+    const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    const listUrl = "/inbox?account=work&query=from%3Asender&page=3&limit=50";
+    window.history.replaceState(null, "", listUrl);
+    await act(async () =>
+      root.render(
+        <InboxClient
+          accounts={[]}
+          initial={{ ...initial, offset: 100, total: 500 }}
+          initialAccount="work"
+          initialQuery="from:sender"
+          initialLimit={50}
+        />,
+      ),
+    );
+    const opener = container.querySelector<HTMLButtonElement>(".mail-open")!;
+    const scroller = container.querySelector(".mail-scroll")!;
+    scroller.scrollTop = 200;
+    opener.focus();
+    apiJson.mockResolvedValue({ body_text: "Cached message", attachments: [] });
+    await act(async () => opener.click());
+    expect(new URLSearchParams(location.search).get("open")).toBe("1");
+    expect(window.history.state.dootInboxReader).toBe(true);
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 25)));
+    expect(document.activeElement).toBe(container.querySelector(".mobile-reader-back"));
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {
+      window.history.replaceState(null, "", listUrl);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await act(async () => container.querySelector<HTMLButtonElement>(".mobile-reader-back")!.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 25)));
+    expect(back).toHaveBeenCalledOnce();
+    const query = new URLSearchParams(location.search);
+    expect(query.has("open")).toBe(false);
+    expect(query.has("folder")).toBe(false);
+    expect(query.get("account")).toBe("work");
+    expect(query.get("query")).toBe("from:sender");
+    expect(query.get("page")).toBe("3");
+    expect(query.get("limit")).toBe("50");
+    expect(document.activeElement).toBe(opener);
+    expect(scroller.scrollTop).toBe(200);
+    expect(scroll).toHaveBeenCalledWith({ top: 640, behavior: "instant" });
+    expect(container.querySelector(".inbox-layout")?.getAttribute("data-mobile-reader")).toBe("closed");
+    window.history.replaceState({ dootInboxReader: true }, "", `${listUrl}&open=1&folder=INBOX`);
+    await act(async () => window.dispatchEvent(new PopStateEvent("popstate")));
+    expect(container.querySelector(".inbox-layout")?.getAttribute("data-mobile-reader")).toBe("open");
+  });
+  it("clears reader parameters on explicit return from a reloaded direct link", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true })),
+    );
+    window.history.replaceState(
+      { dootInboxReader: true },
+      "",
+      "/inbox?account=work&query=from%3Asender&open=1&folder=INBOX",
+    );
+    const back = vi.spyOn(window.history, "back");
+    apiJson.mockResolvedValue({ body_text: "Cached", attachments: [] });
+    await act(async () =>
+      root.render(
+        <InboxClient
+          accounts={[]}
+          initial={initial}
+          initialAccount="work"
+          initialQuery="from:sender"
+          initialOpenUid="1"
+          initialOpenFolder="INBOX"
+        />,
+      ),
+    );
+    await act(async () => container.querySelector<HTMLButtonElement>(".mobile-reader-back")!.click());
+    expect(back).not.toHaveBeenCalled();
+    expect(new URLSearchParams(location.search).has("open")).toBe(false);
+    expect(new URLSearchParams(location.search).get("query")).toBe("from:sender");
+    expect(container.querySelector(".inbox-layout")?.getAttribute("data-mobile-reader")).toBe("closed");
+  });
+
   it("returns from the mobile reader without losing the search or fetching the cached body again", async () => {
     await render("from:sender");
     apiJson.mockResolvedValue({ body_text: "Cached message", attachments: [] });

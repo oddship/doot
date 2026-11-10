@@ -67,7 +67,7 @@
   .settings-grid,
   .rules-layout,
   .session-list {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .rules-sidebar,
   .history-grid > .history-detail:first-child {

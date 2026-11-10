@@ -1,11 +1,12 @@
 "use client";
 
 import { CalendarClock, Pause, Play, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { LocalTime } from "@/components/local-time";
 import { Badge, Button, Card, Dialog, Label } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
+import { LatestRequest } from "@/lib/client-latest-request";
 
 type Schedule = {
   id: number;
@@ -26,20 +27,33 @@ function localInput(date = new Date(Date.now() + 3_600_000)) {
 
 export function ScheduleControls({ kind, ruleId }: { kind: "flow" | "sync"; ruleId?: number }) {
   const toast = useToast();
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const formId = useId();
+  const [loaded, setLoaded] = useState<{ query: string; schedules: Schedule[] } | null>(null);
+  const requests = useRef(new LatestRequest());
   const [editor, setEditor] = useState<{ frequency: Schedule["frequency"]; next: string } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Schedule | null>(null);
   const [busy, setBusy] = useState(false);
   const query = `/api/schedules?kind=${kind}${ruleId ? `&rule_id=${ruleId}` : ""}`;
+  const currentQuery = useRef(query);
+  currentQuery.current = query;
+  const schedules = loaded?.query === query ? loaded.schedules : [];
   const load = async () => {
+    if (currentQuery.current !== query) return;
+    const request = requests.current.begin();
     try {
-      setSchedules((await apiJson<{ schedules: Schedule[] }>(query)).schedules);
+      const result = await apiJson<{ schedules: Schedule[] }>(query, { signal: request.signal });
+      if (request.current() && currentQuery.current === query) setLoaded({ query, schedules: result.schedules });
     } catch (error) {
-      toast.error("Could not load schedules", errorMessage(error));
+      if (request.current() && currentQuery.current === query)
+        toast.error("Could not load schedules", errorMessage(error));
     }
   };
   useEffect(() => {
+    setEditor(null);
+    setPendingDelete(null);
+    setBusy(false);
     void load();
+    return () => requests.current.cancel();
   }, [kind, ruleId]);
   const create = async () => {
     if (!editor) return;
@@ -57,6 +71,7 @@ export function ScheduleControls({ kind, ruleId }: { kind: "flow" | "sync"; rule
           enabled: true,
         },
       });
+      if (currentQuery.current !== query) return;
       setEditor(null);
       await load();
       toast.success(
@@ -66,7 +81,7 @@ export function ScheduleControls({ kind, ruleId }: { kind: "flow" | "sync"; rule
     } catch (error) {
       toast.error("Could not create schedule", errorMessage(error));
     } finally {
-      setBusy(false);
+      if (currentQuery.current === query) setBusy(false);
     }
   };
   const toggle = async (schedule: Schedule) => {
@@ -80,12 +95,13 @@ export function ScheduleControls({ kind, ruleId }: { kind: "flow" | "sync"; rule
           ...(schedule.enabled ? {} : { next_run_at: new Date(Date.now() + 3_600_000).toISOString() }),
         },
       });
+      if (currentQuery.current !== query) return;
       await load();
       toast.success(schedule.enabled ? "Schedule paused" : "Schedule resumed");
     } catch (error) {
       toast.error("Could not update schedule", errorMessage(error));
     } finally {
-      setBusy(false);
+      if (currentQuery.current === query) setBusy(false);
     }
   };
   const remove = async () => {
@@ -93,13 +109,14 @@ export function ScheduleControls({ kind, ruleId }: { kind: "flow" | "sync"; rule
     setBusy(true);
     try {
       await apiJson(`/api/schedules/${pendingDelete.id}`, { method: "DELETE", json: { confirm: true } });
+      if (currentQuery.current !== query) return;
       setPendingDelete(null);
       await load();
       toast.success("Schedule deleted");
     } catch (error) {
       toast.error("Could not delete schedule", errorMessage(error));
     } finally {
-      setBusy(false);
+      if (currentQuery.current === query) setBusy(false);
     }
   };
   return (
@@ -178,8 +195,10 @@ export function ScheduleControls({ kind, ruleId }: { kind: "flow" | "sync"; rule
         {editor && (
           <div className="form-grid">
             <div>
-              <Label>Repeat</Label>
+              <Label htmlFor={`${formId}-field-1`}>Repeat</Label>
               <select
+                id={`${formId}-field-1`}
+                aria-describedby={`${formId}-schedule-help`}
                 value={editor.frequency}
                 onChange={(event) => setEditor({ ...editor, frequency: event.target.value as Schedule["frequency"] })}
               >
@@ -189,8 +208,11 @@ export function ScheduleControls({ kind, ruleId }: { kind: "flow" | "sync"; rule
               </select>
             </div>
             <div>
-              <Label>First run</Label>
+              <Label htmlFor={`${formId}-field-2`}>First run</Label>
               <input
+                required
+                id={`${formId}-field-2`}
+                aria-describedby={`${formId}-schedule-help`}
                 className="input"
                 type="datetime-local"
                 min={localInput(new Date())}
@@ -198,7 +220,7 @@ export function ScheduleControls({ kind, ruleId }: { kind: "flow" | "sync"; rule
                 onChange={(event) => setEditor({ ...editor, next: event.target.value })}
               />
             </div>
-            <p className="muted field-wide">
+            <p className="muted field-wide" id={`${formId}-schedule-help`}>
               Times use {Intl.DateTimeFormat().resolvedOptions().timeZone || "your browser timezone"}. Creating this
               schedule is explicit authorization for future evaluations. Flow evaluations still stop at proposal review.
             </p>

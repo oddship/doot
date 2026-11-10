@@ -12,6 +12,12 @@ import {
   type WorkspaceNode,
 } from "@/lib/workspace";
 
+function messageUrl(message: { account: string; uid: string; folder?: string }) {
+  const query = new URLSearchParams({ account: message.account, open: message.uid });
+  if (message.folder) query.set("folder", message.folder);
+  return `/inbox?${query}`;
+}
+
 function runIntent(intent: WorkspaceActionIntent) {
   if (intent.type === "open_message") {
     const query = new URLSearchParams({ account: intent.account, open: intent.uid });
@@ -186,17 +192,16 @@ function Node({ node }: { node: WorkspaceNode }) {
         </div>
         <div className="message-list">
           {node.messages.map((message) => (
-            <div
+            <a
               className="message-row"
               key={`${message.account}:${message.folder || "INBOX"}:${message.uid}`}
-              onClick={() =>
-                runIntent({
-                  type: "open_message",
-                  account: message.account,
-                  uid: message.uid,
-                  folder: message.folder,
-                })
-              }
+              href={messageUrl(message)}
+              aria-label={`Open ${message.subject || "message"} from ${message.sender}`}
+              onClick={(event) => {
+                if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                navigateClient(event.currentTarget.getAttribute("href")!);
+              }}
             >
               <strong>{message.subject || "(no subject)"}</strong>
               <span>
@@ -210,7 +215,7 @@ function Node({ node }: { node: WorkspaceNode }) {
                   ))}
                 </div>
               ) : null}
-            </div>
+            </a>
           ))}
         </div>
       </Card>

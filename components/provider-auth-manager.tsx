@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Clipboard, ExternalLink, KeyRound, LogIn, LogOut } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { Badge, Button, Card, Dialog, Input, Label } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
@@ -51,6 +51,7 @@ export function ProviderAuthManager({
   onModels: (models: any[], classifierModels: any[]) => void;
 }) {
   const toast = useToast();
+  const formId = useId();
   const [providers, setProviders] = useState(initialProviders);
   const [providerId, setProviderId] = useState(
     initialProviders.find((provider) => provider.configured)?.id || initialProviders[0]?.id || "",
@@ -183,8 +184,8 @@ export function ProviderAuthManager({
       </div>
       <div className="provider-connect-row">
         <div>
-          <Label>Provider</Label>
-          <select value={providerId} onChange={(event) => setProviderId(event.target.value)}>
+          <Label htmlFor={`${formId}-field-1`}>Provider</Label>
+          <select id={`${formId}-field-1`} value={providerId} onChange={(event) => setProviderId(event.target.value)}>
             {providers.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
@@ -289,8 +290,8 @@ export function ProviderAuthManager({
               </div>
             )}
             {login.prompt?.type === "select" && (
-              <div className="provider-login-options">
-                <Label>{login.prompt.message}</Label>
+              <fieldset className="provider-login-options">
+                <legend>{login.prompt.message}</legend>
                 {login.prompt.options?.map((option) => (
                   <Button
                     key={option.id}
@@ -302,13 +303,22 @@ export function ProviderAuthManager({
                     {option.label}
                   </Button>
                 ))}
-              </div>
+              </fieldset>
             )}
             {login.prompt && login.prompt.type !== "select" && (
               <div>
-                <Label>{login.prompt.message}</Label>
+                <Label htmlFor={`${formId}-login-answer`}>{login.prompt.message}</Label>
                 <div className="provider-answer-row">
                   <Input
+                    id={`${formId}-login-answer`}
+                    aria-describedby={
+                      [
+                        login.error ? `${formId}-login-error` : "",
+                        login.prompt.type === "manual_code" ? `${formId}-login-help` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ") || undefined
+                    }
                     type={login.prompt.type === "secret" ? "password" : "text"}
                     autoComplete="off"
                     placeholder={login.prompt.placeholder}
@@ -325,7 +335,7 @@ export function ProviderAuthManager({
                   </Button>
                 </div>
                 {login.prompt.type === "manual_code" && (
-                  <p className="muted">
+                  <p className="muted" id={`${formId}-login-help`}>
                     If the provider redirects to an unreachable localhost page, copy that page’s complete URL from the
                     address bar and paste it here.
                   </p>
@@ -334,7 +344,11 @@ export function ProviderAuthManager({
             )}
             {login.status === "running" && !login.prompt && <p className="muted">Waiting for the provider…</p>}
             {login.status === "complete" && <p>Connected. You can now select an available model below.</p>}
-            {login.error && <p className="error-text">{login.error}</p>}
+            {login.error && (
+              <p className="error-text" id={`${formId}-login-error`} role="alert">
+                {login.error}
+              </p>
+            )}
             {["running", "waiting"].includes(login.status) && (
               <Button variant="outline" onClick={() => void cancel()}>
                 Cancel login

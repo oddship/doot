@@ -53,12 +53,15 @@ const MailRow = memo(function MailRow({
   mail: Mail;
   active: boolean;
   selected: boolean;
-  onOpen: (mail: Mail) => void;
+  onOpen: (mail: Mail, opener?: HTMLButtonElement) => void;
   onToggle: (mail: Mail) => void;
   onPrepare: (mail: Mail) => void;
 }) {
   return (
-    <div className={`mail-item ${active ? "active" : ""}`} onClick={() => onOpen(mail)}>
+    <div
+      className={`mail-item ${active ? "active" : ""}`}
+      onClick={(event) => onOpen(mail, event.currentTarget.querySelector<HTMLButtonElement>(".mail-open") || undefined)}
+    >
       <input
         type="checkbox"
         aria-label={`Select ${mail.subject}`}
@@ -145,6 +148,8 @@ export function InboxClient({
   const selectedRef = useRef<string[]>([]);
   const [open, setOpen] = useState<Mail | null>(null);
   const [mobileReader, setMobileReader] = useState(Boolean(initialOpenUid));
+  const listReturn = useRef<{ opener?: HTMLButtonElement; scrollY: number; listScroll: number } | null>(null);
+  const returnFrame = useRef(0);
   const [detail, setDetail] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [proposal, setProposal] = useState<any>(null);
@@ -176,6 +181,7 @@ export function InboxClient({
       nextOffset = offset,
       nextLimit = pageSize,
       openFolder?: string,
+      pushReader = false,
     ) => {
       const params = new URLSearchParams();
       if (nextAccount !== "all") params.set("account", nextAccount);
@@ -185,7 +191,9 @@ export function InboxClient({
       const page = Math.floor(nextOffset / nextLimit) + 1;
       if (page > 1) params.set("page", String(page));
       if (nextLimit !== 25) params.set("limit", String(nextLimit));
-      replaceClientUrl(`/inbox${params.size ? `?${params}` : ""}`);
+      const url = `/inbox${params.size ? `?${params}` : ""}`;
+      if (pushReader) window.history.pushState({ ...window.history.state, dootInboxReader: true }, "", url);
+      else replaceClientUrl(url);
     },
     [offset, pageSize],
   );
@@ -290,17 +298,73 @@ export function InboxClient({
     }
   }, []);
   const openMessage = useCallback(
-    async (mail: Mail) => {
+    async (mail: Mail, opener?: HTMLButtonElement, historyReplay = false) => {
+      const mobile = window.matchMedia?.("(max-width: 900px)")?.matches;
+      cancelAnimationFrame(returnFrame.current);
+      if (mobile && !historyReplay) {
+        listReturn.current = {
+          opener,
+          scrollY: window.scrollY,
+          listScroll: document.querySelector(".mail-scroll")?.scrollTop || 0,
+        };
+      }
       setMobileReader(true);
       reader.current = mail;
       setOpen(mail);
       setDetail(null);
       setRenderMode("Message");
-      updateUrl(account, activeQuery, mail.uid, offset, pageSize, mail.folder);
+      updateUrl(account, activeQuery, mail.uid, offset, pageSize, mail.folder, Boolean(mobile && !historyReplay));
       await fetchMessage(mail);
     },
     [account, activeQuery, offset, pageSize, updateUrl, fetchMessage],
   );
+  const returnToList = useCallback(
+    (updateLocation = true) => {
+      const saved = listReturn.current;
+      const opener = saved?.opener || document.querySelector<HTMLButtonElement>(".mail-item.active .mail-open");
+      bodies.current.cancel();
+      reader.current = null;
+      setLoading(false);
+      setOpen(null);
+      setDetail(null);
+      setMobileReader(false);
+      if (updateLocation) updateUrl(account, activeQuery);
+      cancelAnimationFrame(returnFrame.current);
+      returnFrame.current = requestAnimationFrame(() => {
+        if (opener?.isConnected) opener.focus({ preventScroll: true });
+        const scroller = document.querySelector(".mail-scroll");
+        if (saved && scroller) scroller.scrollTop = saved.listScroll;
+        if (saved) window.scrollTo({ top: saved.scrollY, behavior: "instant" });
+        else opener?.scrollIntoView({ block: "nearest" });
+      });
+    },
+    [account, activeQuery, updateUrl],
+  );
+  const backToInbox = () => {
+    const canGoBack = Boolean(window.history.state?.dootInboxReader && listReturn.current);
+    returnToList(!canGoBack);
+    if (canGoBack) window.history.back();
+  };
+  useEffect(() => {
+    const restore = () => {
+      if (window.location.pathname !== "/inbox") return;
+      const params = new URLSearchParams(window.location.search);
+      const uid = params.get("open");
+      if (!uid) returnToList(false);
+      else {
+        const mail = data.messages.find(
+          (item: Mail) =>
+            item.uid === uid &&
+            (!params.get("folder") || item.folder === params.get("folder")) &&
+            (!params.get("account") || params.get("account") === "all" || item.account === params.get("account")),
+        );
+        if (mail) void openMessage(mail, undefined, true);
+      }
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, [data.messages, openMessage, returnToList]);
+  useEffect(() => () => cancelAnimationFrame(returnFrame.current), []);
   useEffect(() => {
     if (!initialOpenUid) return;
     const match = initial.messages.find(
@@ -309,7 +373,7 @@ export function InboxClient({
         (!initialOpenFolder || mail.folder === initialOpenFolder) &&
         (initialAccount === "all" || mail.account === initialAccount),
     );
-    if (match) void openMessage(match);
+    if (match) void openMessage(match, undefined, true);
     else if (initialAccount !== "all")
       void (async () => {
         const request = bodies.current.begin();
@@ -337,6 +401,13 @@ export function InboxClient({
   }, []);
   useEffect(() => {
     if (!open) return;
+    if (window.matchMedia?.("(max-width: 900px)")?.matches) {
+      const frame = requestAnimationFrame(() => {
+        document.querySelector<HTMLButtonElement>(".mobile-reader-back")?.focus({ preventScroll: true });
+        document.querySelector(".reader-pane")?.scrollIntoView({ block: "start" });
+      });
+      return () => cancelAnimationFrame(frame);
+    }
     const frame = requestAnimationFrame(() => {
       document.querySelector(".mail-item.active")?.scrollIntoView({ block: "center" });
     });
@@ -636,7 +707,7 @@ export function InboxClient({
           </div>
         </section>
         <article className="reader-pane" aria-label="Message reader">
-          <Button className="mobile-reader-back" variant="outline" onClick={() => setMobileReader(false)}>
+          <Button className="mobile-reader-back" variant="outline" onClick={backToInbox}>
             ← Back to inbox
           </Button>
           {!open ? (

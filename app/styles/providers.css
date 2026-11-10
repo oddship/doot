@@ -1,9 +1,16 @@
 .provider-connect-row {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 12px;
   margin-top: 16px;
+}
+.provider-connect-row > div {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.provider-connect-row > .provider-methods {
+  flex-wrap: wrap;
 }
 
 .provider-connect-row select {
@@ -74,6 +81,10 @@
 }
 
 .provider-login-options {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
   display: grid;
   align-items: stretch;
   gap: 8px;

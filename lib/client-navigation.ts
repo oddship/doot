@@ -21,5 +21,5 @@ export function navigateClient(path: string) {
 export function replaceClientUrl(path: string) {
   if (typeof window === "undefined") return;
   if (!window.dispatchEvent(navigationEvent(path, true))) return;
-  window.history.replaceState(null, "", path);
+  window.history.replaceState(window.history.state, "", path);
 }

@@ -13,12 +13,13 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { LocalTime } from "@/components/local-time";
 import { ScheduleControls } from "@/components/schedule-controls";
 import { Badge, Button, Card, Dialog, Input, Label, Textarea, Tooltip } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
+import { LatestRequest } from "@/lib/client-latest-request";
 import { navigateClient, replaceClientUrl } from "@/lib/client-navigation";
 import { saveSelectedRule } from "@/lib/client-rule-selection";
 import { mailActionLabel, ruleActionFingerprint } from "@/lib/mail-actions";
@@ -64,18 +65,31 @@ export function RulesClient({
   initialFocus?: number;
 }) {
   const toast = useToast();
+  const formId = useId();
   const [rules, setRules] = useState(initialRules);
   const [activeId, setActiveId] = useState(
     initialFocus && initialRules.some((rule) => rule.id === initialFocus) ? initialFocus : initialRules[0]?.id,
   );
   const [editor, setEditor] = useState<any>(null);
-  const [preview, setPreview] = useState<{ messages: Mail[]; total: number } | null>(null);
+  const [previewResult, setPreviewResult] = useState<{
+    ruleId: number;
+    fingerprint: string;
+    data: { messages: Mail[]; total: number };
+  } | null>(null);
+  const previewRequests = useRef(new LatestRequest());
+  const previewRevision = useRef(0);
+  const focusedId = useRef(activeId);
+  focusedId.current = activeId;
   const [previewing, setPreviewing] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [proposal, setProposal] = useState<any>(null);
   const [applying, setApplying] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Rule | null>(null);
   const [deleting, setDeleting] = useState(false);
   const active = rules.find((rule) => rule.id === activeId);
+  const activeFingerprint = active ? ruleActionFingerprint(active) : "";
+  const preview =
+    previewResult?.ruleId === activeId && previewResult.fingerprint === activeFingerprint ? previewResult.data : null;
   const accountEmail = (name: string) =>
     name === "all" ? "All accounts" : accounts.find((account) => account.name === name)?.email || name;
   const destinationNoun = (name: string) =>
@@ -119,7 +133,7 @@ export function RulesClient({
       );
       replaceRule(value.rule);
       setEditor(null);
-      setPreview(null);
+      setPreviewResult(null);
     } catch (error) {
       toast.error("Could not save flow", errorMessage(error, "Please check the flow and try again."));
     }
@@ -148,7 +162,7 @@ export function RulesClient({
       const remaining = rules.filter((item) => item.id !== rule.id);
       setRules(remaining);
       setActiveId(remaining[0]?.id);
-      setPreview(null);
+      setPreviewResult(null);
       replaceClientUrl(remaining[0] ? `/flows/${remaining[0].id}` : "/flows");
       setPendingDelete(null);
       toast.success("Flow deleted", "No email was changed.");
@@ -159,31 +173,46 @@ export function RulesClient({
     }
   };
   const loadPreview = async (rule: Rule) => {
+    if (rule.id !== focusedId.current) return;
+    const request = previewRequests.current.begin();
+    previewRevision.current++;
+    setPreviewResult(null);
     setPreviewing(true);
     try {
-      setPreview(
-        await apiJson(`/api/rules/${rule.id}/preview?limit=25`, { cache: "no-store" }, "Could not preview flow"),
+      const data = await apiJson<{ messages: Mail[]; total: number }>(
+        `/api/rules/${rule.id}/preview?limit=25`,
+        { cache: "no-store", signal: request.signal },
+        "Could not preview flow",
       );
+      if (request.current() && focusedId.current === rule.id)
+        setPreviewResult({ ruleId: rule.id, fingerprint: ruleActionFingerprint(rule), data });
     } catch (error) {
-      toast.error("Could not preview flow", errorMessage(error, "Please try again."));
+      if (request.current() && focusedId.current === rule.id)
+        toast.error("Could not preview flow", errorMessage(error, "Please try again."));
     } finally {
-      setPreviewing(false);
+      if (request.current() && focusedId.current === rule.id) setPreviewing(false);
     }
   };
   const reviewRun = async (rule: Rule) => {
-    if (!preview?.total) return;
+    if (!preview?.total || previewing || preparing || rule.id !== focusedId.current) return;
+    const revision = previewRevision.current;
+    setPreparing(true);
     try {
       const prepared = await apiJson<any>(`/api/rules/${rule.id}/propose`, {
         method: "POST",
         json: { expected_rule: ruleActionFingerprint(rule) },
       });
-      setProposal({ ...prepared, messages: preview.messages.slice(0, 8) });
+      if (focusedId.current === rule.id && previewRevision.current === revision)
+        setProposal({ ...prepared, ruleId: rule.id, messages: preview.messages.slice(0, 8) });
     } catch (error) {
-      toast.error("Could not prepare Flow review", errorMessage(error));
+      if (focusedId.current === rule.id && previewRevision.current === revision)
+        toast.error("Could not prepare Flow review", errorMessage(error));
+    } finally {
+      if (focusedId.current === rule.id && previewRevision.current === revision) setPreparing(false);
     }
   };
   const apply = async () => {
-    if (!proposal || applying) return;
+    if (!proposal || proposal.ruleId !== focusedId.current || applying) return;
     setApplying(true);
     try {
       await apiJson<any>(
@@ -201,9 +230,15 @@ export function RulesClient({
     }
   };
   useEffect(() => {
+    setProposal(null);
+    setPreparing(false);
     const focused = rules.find((rule) => rule.id === activeId);
     if (focused) void loadPreview(focused);
-  }, [activeId]);
+    return () => {
+      previewRequests.current.cancel();
+      previewRevision.current++;
+    };
+  }, [activeId, activeFingerprint]);
   const openEditor = (rule?: Rule) =>
     setEditor(
       rule
@@ -364,7 +399,7 @@ export function RulesClient({
                       variant="outline"
                       tooltip="Recheck current cached matches"
                       onClick={() => loadPreview(active)}
-                      disabled={previewing}
+                      disabled={previewing || preparing}
                     >
                       <Eye size={14} />
                       {previewing ? "Checking…" : "Refresh preview"}
@@ -381,7 +416,8 @@ export function RulesClient({
                     <Button
                       tooltip="Review approval before mailbox changes"
                       onClick={() => reviewRun(active)}
-                      disabled={!preview?.total}
+                      disabled={previewing || preparing || !preview?.total}
+                      aria-busy={preparing}
                     >
                       <Play size={14} />
                       Review &amp; run
@@ -434,16 +470,19 @@ export function RulesClient({
         {editor && (
           <div className="form-grid">
             <div className="field-wide">
-              <Label>Name</Label>
+              <Label htmlFor={`${formId}-field-1`}>Name</Label>
               <Input
+                required
+                id={`${formId}-field-1`}
                 value={editor.name}
                 onChange={(event) => setEditor({ ...editor, name: event.target.value })}
                 placeholder="Archive deployment successes"
               />
             </div>
             <div>
-              <Label>Account</Label>
+              <Label htmlFor={`${formId}-field-2`}>Account</Label>
               <select
+                id={`${formId}-field-2`}
                 value={editor.account}
                 onChange={(event) => setEditor({ ...editor, account: event.target.value, target_folder: "" })}
               >
@@ -457,8 +496,9 @@ export function RulesClient({
               </select>
             </div>
             <div>
-              <Label>Action</Label>
+              <Label htmlFor={`${formId}-field-3`}>Action</Label>
               <select
+                id={`${formId}-field-3`}
                 value={editor.action}
                 onChange={(event) => setEditor({ ...editor, action: event.target.value, target_folder: "" })}
               >
@@ -480,18 +520,25 @@ export function RulesClient({
               )}
             </div>
             <div className="field-wide">
-              <Label>Filter query</Label>
+              <Label htmlFor={`${formId}-field-4`}>Filter query</Label>
               <Input
+                required
+                id={`${formId}-field-4`}
+                aria-describedby={`${formId}-query-help`}
                 value={editor.query}
                 onChange={(event) => setEditor({ ...editor, query: event.target.value })}
                 placeholder={'from:notifications@github.com "Run succeeded"'}
               />
-              <span className="field-help">Supports plain terms plus from:, sender:, subject:, and domain:.</span>
+              <span className="field-help" id={`${formId}-query-help`}>
+                Supports plain terms plus from:, sender:, subject:, and domain:.
+              </span>
             </div>
             {editor.action === "move" && (
               <div className="field-wide">
-                <Label>Destination {destinationNoun(editor.account)}</Label>
+                <Label htmlFor={`${formId}-field-5`}>Destination {destinationNoun(editor.account)}</Label>
                 <select
+                  required
+                  id={`${formId}-field-5`}
                   value={editor.target_folder || ""}
                   onChange={(event) => setEditor({ ...editor, target_folder: event.target.value })}
                 >
@@ -519,8 +566,9 @@ export function RulesClient({
               </div>
             )}
             <div className="field-wide">
-              <Label>Rationale</Label>
+              <Label htmlFor={`${formId}-field-6`}>Rationale</Label>
               <Textarea
+                id={`${formId}-field-6`}
                 value={editor.rationale || ""}
                 onChange={(event) => setEditor({ ...editor, rationale: event.target.value })}
                 placeholder="Why this pattern is safe and useful"

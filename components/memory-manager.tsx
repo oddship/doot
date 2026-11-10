@@ -1,6 +1,6 @@
 "use client";
 import { Brain, Pencil, Plus, Search, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { LocalTime } from "@/components/local-time";
 import { Badge, Button, Card, Dialog, Input, Label, Textarea } from "@/components/ui";
@@ -17,11 +17,13 @@ type MemoryItem = {
 
 export function MemoryManager({ initialNamespaces }: { initialNamespaces: Namespace[] }) {
   const toast = useToast();
+  const formId = useId();
   const [namespaces, setNamespaces] = useState(initialNamespaces);
   const [namespace, setNamespace] = useState(initialNamespaces[0]?.namespace || "");
   const [prefix, setPrefix] = useState("");
   const [items, setItems] = useState<MemoryItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [valueError, setValueError] = useState("");
   const [editor, setEditor] = useState<{
     originalKey?: string;
     namespace: string;
@@ -30,6 +32,7 @@ export function MemoryManager({ initialNamespaces }: { initialNamespaces: Namesp
   } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<MemoryItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  useEffect(() => setValueError(""), [editor?.originalKey, editor?.namespace]);
 
   const refreshNamespaces = async () => {
     const value = await apiJson<{ namespaces: Namespace[] }>(
@@ -68,6 +71,7 @@ export function MemoryManager({ initialNamespaces }: { initialNamespaces: Namesp
     try {
       value = JSON.parse(editor.value);
     } catch {
+      setValueError("Memory values must contain valid JSON.");
       toast.error("Invalid JSON", "Memory values must contain valid JSON.");
       return;
     }
@@ -159,6 +163,7 @@ export function MemoryManager({ initialNamespaces }: { initialNamespaces: Namesp
               ))}
             </select>
             <Input
+              aria-label="Filter memory by key prefix"
               value={prefix}
               placeholder="Filter by key prefix"
               onChange={(event) => setPrefix(event.target.value)}
@@ -235,24 +240,43 @@ export function MemoryManager({ initialNamespaces }: { initialNamespaces: Namesp
         {editor && (
           <div className="form-grid">
             <div>
-              <Label>Namespace</Label>
+              <Label htmlFor={`${formId}-field-1`}>Namespace</Label>
               <Input
+                required
+                id={`${formId}-field-1`}
                 value={editor.namespace}
                 disabled={Boolean(editor.originalKey)}
                 onChange={(event) => setEditor({ ...editor, namespace: event.target.value })}
               />
             </div>
             <div>
-              <Label>Key</Label>
-              <Input value={editor.key} onChange={(event) => setEditor({ ...editor, key: event.target.value })} />
+              <Label htmlFor={`${formId}-field-2`}>Key</Label>
+              <Input
+                required
+                id={`${formId}-field-2`}
+                value={editor.key}
+                onChange={(event) => setEditor({ ...editor, key: event.target.value })}
+              />
             </div>
             <div className="field-wide">
-              <Label>JSON value</Label>
+              <Label htmlFor={`${formId}-field-3`}>JSON value</Label>
               <Textarea
+                required
+                id={`${formId}-field-3`}
+                aria-invalid={Boolean(valueError)}
+                aria-describedby={valueError ? `${formId}-value-error` : undefined}
                 className="memory-editor"
                 value={editor.value}
-                onChange={(event) => setEditor({ ...editor, value: event.target.value })}
+                onChange={(event) => {
+                  setValueError("");
+                  setEditor({ ...editor, value: event.target.value });
+                }}
               />
+              {valueError && (
+                <p className="error-text" id={`${formId}-value-error`} role="alert">
+                  {valueError}
+                </p>
+              )}
             </div>
             <div className="field-wide memory-dialog-actions">
               <Button variant="outline" tooltip="Discard memory value changes" onClick={() => setEditor(null)}>

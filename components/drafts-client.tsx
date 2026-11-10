@@ -1,7 +1,7 @@
 "use client";
 
 import { Bot, FilePlus2, Save, SendToBack, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { Badge, Button, Card, Input, Label, Textarea } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
@@ -44,6 +44,7 @@ export function DraftsClient({
   initialFocus?: number;
 }) {
   const toast = useToast();
+  const formId = useId();
   const [drafts, setDrafts] = useState(initialDrafts);
   const [activeId, setActiveId] = useState(initialFocus || initialDrafts[0]?.id || 0);
   const [editor, setEditor] = useState<Draft["content"] | null>(
@@ -284,8 +285,9 @@ export function DraftsClient({
               </div>
               <div className="draft-fields">
                 <div>
-                  <Label>From account</Label>
+                  <Label htmlFor={`${formId}-field-1`}>From account</Label>
                   <select
+                    id={`${formId}-field-1`}
                     value={editor.account}
                     onChange={(event) => updateEditor({ ...editor, account: event.target.value })}
                   >
@@ -297,37 +299,42 @@ export function DraftsClient({
                   </select>
                 </div>
                 <div>
-                  <Label>To</Label>
+                  <Label htmlFor={`${formId}-field-2`}>To</Label>
                   <Input
+                    id={`${formId}-field-2`}
                     value={editor.to.join(", ")}
                     placeholder="name@example.com"
                     onChange={(event) => updateEditor({ ...editor, to: splitAddresses(event.target.value) })}
                   />
                 </div>
                 <div>
-                  <Label>Cc</Label>
+                  <Label htmlFor={`${formId}-field-3`}>Cc</Label>
                   <Input
+                    id={`${formId}-field-3`}
                     value={editor.cc.join(", ")}
                     onChange={(event) => updateEditor({ ...editor, cc: splitAddresses(event.target.value) })}
                   />
                 </div>
                 <div>
-                  <Label>Bcc</Label>
+                  <Label htmlFor={`${formId}-field-4`}>Bcc</Label>
                   <Input
+                    id={`${formId}-field-4`}
                     value={editor.bcc.join(", ")}
                     onChange={(event) => updateEditor({ ...editor, bcc: splitAddresses(event.target.value) })}
                   />
                 </div>
                 <div className="field-wide">
-                  <Label>Subject</Label>
+                  <Label htmlFor={`${formId}-field-5`}>Subject</Label>
                   <Input
+                    id={`${formId}-field-5`}
                     value={editor.subject}
                     onChange={(event) => updateEditor({ ...editor, subject: event.target.value })}
                   />
                 </div>
                 <div className="field-wide">
-                  <Label>Message</Label>
+                  <Label htmlFor={`${formId}-field-6`}>Message</Label>
                   <Textarea
+                    id={`${formId}-field-6`}
                     className="draft-body"
                     value={editor.body}
                     onChange={(event) => updateEditor({ ...editor, body: event.target.value })}

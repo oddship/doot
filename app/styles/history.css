@@ -14,15 +14,33 @@
   max-height: none;
 }
 .session-list {
+  min-width: 0;
   padding: 8px;
 }
 .session-link {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   display: block;
   padding: 12px;
   border-radius: 9px;
 }
 .session-link:hover {
   background: var(--soft);
+}
+.session-list > .session-link {
+  width: 100%;
+}
+.session-title {
+  min-width: 0;
+}
+.session-title strong {
+  flex: 1;
+  min-width: 0;
+}
+.session-link progress {
+  min-width: 0;
+  max-width: 100%;
 }
 .session-link strong {
   display: block;

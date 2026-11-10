@@ -1,6 +1,6 @@
 "use client";
 import { MailPlus, Save, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { FolderManager } from "@/components/folder-manager";
 import { MemoryManager } from "@/components/memory-manager";
@@ -11,6 +11,7 @@ import { apiJson, errorMessage } from "@/lib/client-api";
 
 export function SettingsClient({ initial }: { initial: any }) {
   const toast = useToast();
+  const formId = useId();
   const [accounts, setAccounts] = useState(initial.accounts);
   const [settings, setSettings] = useState(initial.settings);
   const [models, setModels] = useState(initial.models);
@@ -204,8 +205,9 @@ export function SettingsClient({ initial }: { initial: any }) {
             <h2>Doot model</h2>
             <div className="form-grid">
               <div>
-                <Label>Model</Label>
+                <Label htmlFor={`${formId}-field-1`}>Model</Label>
                 <select
+                  id={`${formId}-field-1`}
                   value={
                     settings.agent_provider && settings.agent_model
                       ? `${settings.agent_provider}:${settings.agent_model}`
@@ -223,8 +225,9 @@ export function SettingsClient({ initial }: { initial: any }) {
                 </select>
               </div>
               <div>
-                <Label>Reasoning effort</Label>
+                <Label htmlFor={`${formId}-field-2`}>Reasoning effort</Label>
                 <select
+                  id={`${formId}-field-2`}
                   value={settings.agent_thinking}
                   onChange={(event) =>
                     setSettings({
@@ -289,8 +292,9 @@ export function SettingsClient({ initial }: { initial: any }) {
             <h2>Sync behavior</h2>
             <div className="form-grid">
               <div>
-                <Label>Mailbox scope</Label>
+                <Label htmlFor={`${formId}-field-3`}>Mailbox scope</Label>
                 <select
+                  id={`${formId}-field-3`}
                   value={settings.sync_scope || "inbox"}
                   onChange={(event) => setSettings({ ...settings, sync_scope: event.target.value })}
                 >
@@ -307,8 +311,9 @@ export function SettingsClient({ initial }: { initial: any }) {
                 </div>
               </div>
               <div>
-                <Label>Lookback days</Label>
+                <Label htmlFor={`${formId}-field-4`}>Lookback days</Label>
                 <Input
+                  id={`${formId}-field-4`}
                   type="number"
                   value={settings.sync_days}
                   onChange={(event) =>
@@ -320,8 +325,9 @@ export function SettingsClient({ initial }: { initial: any }) {
                 />
               </div>
               <div>
-                <Label>Messages per folder</Label>
+                <Label htmlFor={`${formId}-field-5`}>Messages per folder</Label>
                 <select
+                  id={`${formId}-field-5`}
                   value={settings.initial_sync_limit}
                   onChange={(event) =>
                     setSettings({
@@ -390,10 +396,16 @@ export function SettingsClient({ initial }: { initial: any }) {
             )}
             <div className="switch-row">
               <div>
-                <strong>Sync on application start</strong>
-                <div className="muted">The UI never runs Doot automatically after sync.</div>
+                <strong>
+                  <label htmlFor={`${formId}-privacy-1`}>Sync on application start</label>
+                </strong>
+                <div className="muted" id={`${formId}-privacy-1-help`}>
+                  The UI never runs Doot automatically after sync.
+                </div>
               </div>
               <input
+                id={`${formId}-privacy-1`}
+                aria-describedby={`${formId}-privacy-1-help`}
                 type="checkbox"
                 checked={settings.sync_on_start}
                 onChange={(event) =>
@@ -411,10 +423,16 @@ export function SettingsClient({ initial }: { initial: any }) {
             <h2>Privacy and delegation</h2>
             <div className="switch-row">
               <div>
-                <strong>Load remote images</strong>
-                <div className="muted">Off by default to prevent tracking pixels.</div>
+                <strong>
+                  <label htmlFor={`${formId}-privacy-2`}>Load remote images</label>
+                </strong>
+                <div className="muted" id={`${formId}-privacy-2-help`}>
+                  Off by default to prevent tracking pixels.
+                </div>
               </div>
               <input
+                id={`${formId}-privacy-2`}
+                aria-describedby={`${formId}-privacy-2-help`}
                 type="checkbox"
                 checked={settings.allow_remote_images}
                 onChange={(event) =>
@@ -427,10 +445,16 @@ export function SettingsClient({ initial }: { initial: any }) {
             </div>
             <div className="switch-row">
               <div>
-                <strong>Allow selected message content in Doot</strong>
-                <div className="muted">Headers remain available; bodies require explicit selection.</div>
+                <strong>
+                  <label htmlFor={`${formId}-privacy-3`}>Allow selected message content in Doot</label>
+                </strong>
+                <div className="muted" id={`${formId}-privacy-3-help`}>
+                  Headers remain available; bodies require explicit selection.
+                </div>
               </div>
               <input
+                id={`${formId}-privacy-3`}
+                aria-describedby={`${formId}-privacy-3-help`}
                 type="checkbox"
                 checked={settings.share_message_content}
                 onChange={(event) =>
@@ -443,10 +467,16 @@ export function SettingsClient({ initial }: { initial: any }) {
             </div>
             <div className="switch-row">
               <div>
-                <strong>Enable delegated analysis</strong>
-                <div className="muted">Requires separate permission for each selection.</div>
+                <strong>
+                  <label htmlFor={`${formId}-privacy-4`}>Enable delegated analysis</label>
+                </strong>
+                <div className="muted" id={`${formId}-privacy-4-help`}>
+                  Requires separate permission for each selection.
+                </div>
               </div>
               <input
+                id={`${formId}-privacy-4`}
+                aria-describedby={`${formId}-privacy-4-help`}
                 type="checkbox"
                 checked={settings.agent_delegation}
                 onChange={(event) =>
@@ -489,28 +519,44 @@ export function SettingsClient({ initial }: { initial: any }) {
         {editor && (
           <div className="form-grid">
             <div className="field-wide">
-              <Label>Email address</Label>
+              <Label htmlFor={`${formId}-field-6`}>Email address</Label>
               <Input
+                required
+                id={`${formId}-field-6`}
+                type="email"
                 value={editor.username}
                 onChange={(event) => setEditor({ ...editor, username: event.target.value })}
               />
             </div>
             <div>
-              <Label>IMAP host</Label>
-              <Input value={editor.host} onChange={(event) => setEditor({ ...editor, host: event.target.value })} />
+              <Label htmlFor={`${formId}-field-7`}>IMAP host</Label>
+              <Input
+                required
+                id={`${formId}-field-7`}
+                value={editor.host}
+                onChange={(event) => setEditor({ ...editor, host: event.target.value })}
+              />
             </div>
             <div>
-              <Label>Port</Label>
+              <Label htmlFor={`${formId}-field-8`}>Port</Label>
               <Input
+                id={`${formId}-field-8`}
                 type="number"
+                min={1}
+                max={65535}
+                required
                 value={editor.port}
                 onChange={(event) => setEditor({ ...editor, port: Number(event.target.value) })}
               />
             </div>
             <div className="field-wide">
-              <Label>{editor.name ? "New password (leave blank to keep)" : "Password or app password"}</Label>
+              <Label htmlFor={`${formId}-field-9`}>
+                {editor.name ? "New password (leave blank to keep)" : "Password or app password"}
+              </Label>
               <Input
+                id={`${formId}-field-9`}
                 type="password"
+                required={!editor.name}
                 value={editor.password}
                 onChange={(event) => setEditor({ ...editor, password: event.target.value })}
               />

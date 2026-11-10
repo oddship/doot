@@ -94,7 +94,12 @@ export function HistoryScreen({ sessions: initialSessions }: { sessions: any[] }
           ))}
         </fieldset>
         <div className="history-filter-fields">
-          <Input value={query} placeholder="Filter by title" onChange={(event) => setQuery(event.target.value)} />
+          <Input
+            aria-label="Filter history by title"
+            value={query}
+            placeholder="Filter by title"
+            onChange={(event) => setQuery(event.target.value)}
+          />
           <select aria-label="History status" value={status} onChange={(event) => setStatus(event.target.value)}>
             <option value="all">All statuses</option>
             <option value="in_progress">In progress</option>
