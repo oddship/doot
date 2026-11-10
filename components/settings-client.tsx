@@ -6,7 +6,7 @@ import { FolderManager } from "@/components/folder-manager";
 import { MemoryManager } from "@/components/memory-manager";
 import { ProviderAuthManager } from "@/components/provider-auth-manager";
 import { ScheduleControls } from "@/components/schedule-controls";
-import { Badge, Button, Card, Dialog, Input, Label } from "@/components/ui";
+import { Badge, Button, Card, Dialog, EmptyState, Input, Label, PageHeader } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
 
 export function SettingsClient({ initial }: { initial: any }) {
@@ -85,13 +85,12 @@ export function SettingsClient({ initial }: { initial: any }) {
   };
   return (
     <main className="page">
-      <header className="page-head">
-        <h1>Settings</h1>
-        <Button tooltip="Persist every settings section" onClick={saveSettings}>
+      <PageHeader title="Settings" description="Connect your accounts and choose how Doot works with your email.">
+        <Button tooltip="Save changes to all settings sections" onClick={saveSettings}>
           <Save size={15} />
           {notice || "Save settings"}
         </Button>
-      </header>
+      </PageHeader>
       <div className="settings-grid">
         <aside>
           <Card style={{ padding: 9 }}>
@@ -99,7 +98,7 @@ export function SettingsClient({ initial }: { initial: any }) {
               Accounts
             </a>
             <a className="session-link" href="#provider">
-              Provider
+              AI providers
             </a>
             <a className="session-link" href="#agent">
               Doot
@@ -120,7 +119,7 @@ export function SettingsClient({ initial }: { initial: any }) {
               Privacy
             </a>
             <a className="session-link" href="#artifacts">
-              Artifacts
+              Saved items
             </a>
           </Card>
         </aside>
@@ -129,7 +128,9 @@ export function SettingsClient({ initial }: { initial: any }) {
             <div className="node-title-row">
               <div>
                 <h2>Connected accounts</h2>
-                <p className="muted">Passwords are write-only and never returned by the API.</p>
+                <p className="muted">
+                  Connect an IMAP account to start reading your email. Saved passwords are never shown.
+                </p>
               </div>
               <Button
                 variant="outline"
@@ -146,9 +147,15 @@ export function SettingsClient({ initial }: { initial: any }) {
                 }
               >
                 <MailPlus size={15} />
-                Add
+                Add account
               </Button>
             </div>
+            {!accounts.length && (
+              <EmptyState
+                title="Bring your email together"
+                description="Add an IMAP account above, then sync it to browse and search email here. You can connect AI separately when you want help organizing."
+              />
+            )}
             {accounts.map((account: any) => (
               <div className="account-row" key={account.name}>
                 <div>
@@ -493,7 +500,7 @@ export function SettingsClient({ initial }: { initial: any }) {
             </p>
           </Card>
           <Card className="settings-section" id="artifacts">
-            <h2>Local artifacts</h2>
+            <h2>Saved items</h2>
             {initial.artifacts.length ? (
               initial.artifacts.map((item: any) => (
                 <div className="account-row" id={`artifact-${item.id}`} key={item.id}>

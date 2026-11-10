@@ -1,231 +1,233 @@
-.settings-grid {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 24px;
-}
-.settings-main {
-  min-width: 0;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-.settings-section {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  padding: 20px;
-}
-.settings-section h2 {
-  font-size: 17px;
-}
-.settings-section h2 > svg {
-  vertical-align: -3px;
-  margin-right: 6px;
-}
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-.settings-grid > *,
-.settings-main > *,
-.settings-section .form-grid > *,
-.provider-connect-row > *,
-.provider-row > * {
-  min-width: 0;
-  max-width: 100%;
-}
-.settings-main select,
-.settings-main input:not([type="checkbox"]):not([type="radio"]),
-.settings-main textarea {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-}
-.settings-main fieldset {
-  min-inline-size: 0;
-}
-.settings-main .node-title-row,
-.settings-main .provider-methods,
-.settings-main .folder-toolbar {
-  flex-wrap: wrap;
-}
-.settings-main .node-title-row > div,
-.settings-main .provider-row > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.field-wide {
-  grid-column: 1 / -1;
-}
-.account-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 13px 0;
-  border-top: 1px solid var(--line);
-}
-.account-row:first-of-type {
-  border-top: 0;
-}
-.switch-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 11px 0;
-}
-.switch-row input {
-  width: 18px;
-  height: 18px;
-}
-.sync-folder-picker {
-  display: grid;
-  gap: 12px;
-  margin-top: 16px;
-}
-.sync-folder-picker fieldset {
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-}
-.sync-folder-picker legend {
-  padding: 0 6px;
-  font-weight: 700;
-}
-.sync-folder-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
-}
-.sync-folder-options label {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 8px;
-  padding: 8px 9px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  cursor: pointer;
-}
-.sync-folder-options label span:not(.badge) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sync-folder-options input {
-  flex: 0 0 auto;
-}
-.folder-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 16px 0;
-}
-.folder-toolbar select {
-  max-width: 360px;
-}
-.folder-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-}
-.folder-row {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  padding: 11px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fafaf8;
-}
-.folder-row strong,
-.folder-row span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.folder-row span {
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 3px;
-}
-.memory-toolbar {
-  display: grid;
-  grid-template-columns: minmax(180px, 260px) minmax(220px, 1fr) 38px;
-  gap: 8px;
-  margin: 16px 0;
-}
-.memory-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.memory-row {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 13px;
-  background: #fafaf8;
-}
-.memory-row-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.memory-row-head > div {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.memory-row pre {
-  max-height: 220px;
-  overflow: auto;
-  margin: 11px 0 8px;
-  padding: 11px;
-  border-radius: 8px;
-  background: #20201f;
-  color: #f4f4f0;
-  font-size: 12px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.memory-row > .muted {
-  font-size: 12px;
-}
-.memory-empty {
-  text-align: center;
-  padding: 28px 12px;
-}
-.memory-empty p {
-  font-weight: 700;
-  margin: 8px 0 5px;
-}
-.memory-empty span {
-  display: block;
-}
-.memory-editor {
-  min-height: 240px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
-.memory-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.mailbox-apply-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 14px 0;
-  padding: 9px 11px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 650;
+@layer layout {
+  .settings-grid {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 24px;
+  }
+  .settings-main {
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .settings-section {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    padding: 20px;
+  }
+  .settings-section h2 {
+    font-size: 17px;
+  }
+  .settings-section h2 > svg {
+    vertical-align: -3px;
+    margin-right: 6px;
+  }
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .settings-grid > *,
+  .settings-main > *,
+  .settings-section .form-grid > *,
+  .provider-connect-row > *,
+  .provider-row > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .settings-main select,
+  .settings-main input:not([type="checkbox"]):not([type="radio"]),
+  .settings-main textarea {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .settings-main fieldset {
+    min-inline-size: 0;
+  }
+  .settings-main .node-title-row,
+  .settings-main .provider-methods,
+  .settings-main .folder-toolbar {
+    flex-wrap: wrap;
+  }
+  .settings-main .node-title-row > div,
+  .settings-main .provider-row > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .field-wide {
+    grid-column: 1 / -1;
+  }
+  .account-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 13px 0;
+    border-top: 1px solid var(--line);
+  }
+  .account-row:first-of-type {
+    border-top: 0;
+  }
+  .switch-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 11px 0;
+  }
+  .switch-row input {
+    width: 18px;
+    height: 18px;
+  }
+  .sync-folder-picker {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .sync-folder-picker fieldset {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-medium);
+  }
+  .sync-folder-picker legend {
+    padding: 0 6px;
+    font-weight: 700;
+  }
+  .sync-folder-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .sync-folder-options label {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 8px;
+    padding: 8px 9px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-medium);
+    cursor: pointer;
+  }
+  .sync-folder-options label span:not(.badge) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sync-folder-options input {
+    flex: 0 0 auto;
+  }
+  .folder-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .folder-toolbar select {
+    max-width: 360px;
+  }
+  .folder-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+  .folder-row {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 11px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-medium);
+    background: var(--faint);
+  }
+  .folder-row strong,
+  .folder-row span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .folder-row span {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 3px;
+  }
+  .memory-toolbar {
+    display: grid;
+    grid-template-columns: minmax(180px, 260px) minmax(220px, 1fr) 38px;
+    gap: 8px;
+    margin: 16px 0;
+  }
+  .memory-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .memory-row {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-medium);
+    padding: 13px;
+    background: var(--faint);
+  }
+  .memory-row-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .memory-row-head > div {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .memory-row pre {
+    max-height: 220px;
+    overflow: auto;
+    margin: 11px 0 8px;
+    padding: 11px;
+    border-radius: var(--radius-medium);
+    background: var(--foreground);
+    color: var(--card);
+    font-size: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .memory-row > .muted {
+    font-size: 12px;
+  }
+  .memory-empty {
+    text-align: center;
+    padding: 28px 12px;
+  }
+  .memory-empty p {
+    font-weight: 700;
+    margin: 8px 0 5px;
+  }
+  .memory-empty span {
+    display: block;
+  }
+  .memory-editor {
+    min-height: 240px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+  }
+  .memory-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .mailbox-apply-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 0;
+    padding: 9px 11px;
+    border: 1px solid color-mix(in srgb, var(--brand-accent) 25%, var(--line));
+    background: var(--selection);
+    color: var(--brand-accent);
+    font-size: 12px;
+    font-weight: 650;
+  }
 }

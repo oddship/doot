@@ -503,8 +503,7 @@ export function WorkspaceClient({
                     <div className="body-access-request">
                       <p>{entry.readApproval.reason}</p>
                       <p>
-                        Approve only these {entry.readApproval.messages.length} message bodies for review, including
-                        read-only codemode.
+                        Allow Doot to read only these {entry.readApproval.messages.length} emails for analysis.
                         {entry.readApproval.scope && (
                           <>
                             {" "}
@@ -541,7 +540,7 @@ export function WorkspaceClient({
                           </Button>
                           <Button
                             size="sm"
-                            tooltip="Allow only this snapshot of message bodies, including codemode review"
+                            tooltip="Allow read-only analysis of only these email contents"
                             disabled={running}
                             onClick={() => approveRead(entry.readApproval!)}
                           >
@@ -552,7 +551,7 @@ export function WorkspaceClient({
                         <div className={`body-access-decision ${entry.readApproval.status}`}>
                           {entry.readApproval.status === "approved" ? <ShieldCheck size={14} /> : <X size={14} />}
                           {entry.readApproval.status === "approved"
-                            ? "Approved for review, including codemode"
+                            ? "Approved for read-only analysis"
                             : "Not approved"}
                         </div>
                       )}
@@ -594,7 +593,7 @@ export function WorkspaceClient({
       <section className="agent-pane" id="workspace-agent">
         <div className="pane-head">
           <div className="pane-title">
-            <h1>Doot</h1>
+            <h1>Email assistant</h1>
             <div className="agent-model-summary">
               <span>Model</span>
               <strong title={modelLabel}>{modelLabel}</strong>
@@ -683,7 +682,7 @@ export function WorkspaceClient({
         <div className="prompt-wrap">
           <div style={{ display: "flex", gap: 8, marginBottom: 9 }}>
             <Button
-              tooltip="Analyze inbox and build workspace"
+              tooltip="Analyze your inbox and prepare an overview"
               tooltipSide="top"
               onClick={() => run("", true)}
               disabled={running}
@@ -727,8 +726,8 @@ export function WorkspaceClient({
           <div className="canvas-empty">
             <div>
               <Sparkles size={28} />
-              <h2>No workspace yet</h2>
-              <p>Choose Organize for an inbox overview, or ask a specific question in chat.</p>
+              <h2>Your email overview</h2>
+              <p>Choose Organize to see what needs attention, or ask Doot to find and group email for you.</p>
             </div>
           </div>
         )}

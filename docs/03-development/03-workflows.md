@@ -30,4 +30,6 @@ The Pages workflow installs a pinned Oddship Moat release, builds documentation,
 
 The documentation uses Moat's supported custom base layout. `docs/_layout.html` tracks the built-in layout from the Moat version pinned in CI, preserving its search, navigation, responsive sidebar, and theme toggle. `docs/_static/theme.css` loads after Oat and owns the Doot-specific light and dark tokens plus the small set of branded element overrides. When upgrading Moat, compare the pinned built-in layout before carrying the stylesheet link into the new version.
 
-Theme changes should start with [Oat's customization variables](https://oat.ink/customizing/); keep product colors synchronized with `app/styles/theme.css`. Avoid modifying the vendored layout for visual changes that can be expressed in the theme stylesheet.
+Theme changes should start with [Oat's customization variables](https://oat.ink/customizing/); keep product colors synchronized with `app/styles/tokens.css`. Avoid modifying the vendored layout for visual changes that can be expressed in the theme stylesheet.
+
+The application uses a pinned Oatbase distribution and an explicit CSS cascade. See the [Doot design system](https://github.com/oddship/doot/blob/main/DESIGN_SYSTEM.md) for component, content, responsive, and upstream-update conventions. Application CSS declares layers inside the imported files; avoid layered import syntax in Next builds.

@@ -1,386 +1,388 @@
-@media (max-width: 900px) {
-  html,
-  body {
-    max-width: 100%;
-    overflow-x: clip;
+@layer layout {
+  @media (max-width: 900px) {
+    html,
+    body {
+      max-width: 100%;
+      overflow-x: clip;
+    }
+    .topbar {
+      height: auto;
+      min-height: 64px;
+      padding: 9px 14px 7px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      margin-right: auto;
+    }
+    .top-actions {
+      margin-left: 8px;
+    }
+    .nav {
+      order: 3;
+      width: 100%;
+      height: 34px;
+      min-width: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .nav::-webkit-scrollbar {
+      display: none;
+    }
+    .nav a {
+      flex: none;
+      padding: 8px;
+    }
+    .workspace-shell {
+      height: auto;
+      display: block;
+      min-width: 0;
+    }
+    .workspace-shell > *,
+    .inbox-layout > * {
+      min-width: 0;
+    }
+    .agent-pane {
+      height: 600px;
+      border-right: 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .canvas-pane {
+      min-height: 520px;
+    }
+    .inbox-layout {
+      display: block;
+      width: 100%;
+      height: auto;
+      min-width: 0;
+    }
+    .inbox-list {
+      height: 580px;
+      min-width: 0;
+      border-right: 0;
+    }
+    .reader-pane {
+      min-width: 0;
+      min-height: 520px;
+    }
+    .history-grid,
+    .settings-grid,
+    .rules-layout,
+    .session-list {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .rules-sidebar,
+    .history-grid > .history-detail:first-child {
+      position: static;
+      max-height: none;
+    }
+    .rule-definition {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .workspace-grid.cols-3,
+    .workspace-grid.cols-4 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .page {
+      padding: 18px;
+    }
   }
-  .topbar {
-    height: auto;
-    min-height: 64px;
-    padding: 9px 14px 7px;
-    flex-wrap: wrap;
-  }
-  .brand {
-    margin-right: auto;
-  }
-  .top-actions {
-    margin-left: 8px;
-  }
-  .nav {
-    order: 3;
-    width: 100%;
-    height: 34px;
-    min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .nav::-webkit-scrollbar {
-    display: none;
-  }
-  .nav a {
-    flex: none;
-    padding: 8px;
-  }
-  .workspace-shell {
-    height: auto;
-    display: block;
-    min-width: 0;
-  }
-  .workspace-shell > *,
-  .inbox-layout > * {
-    min-width: 0;
-  }
-  .agent-pane {
-    height: 600px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .canvas-pane {
-    min-height: 520px;
-  }
-  .inbox-layout {
-    display: block;
-    width: 100%;
-    height: auto;
-    min-width: 0;
-  }
-  .inbox-list {
-    height: 580px;
-    min-width: 0;
-    border-right: 0;
-  }
-  .reader-pane {
-    min-width: 0;
-    min-height: 520px;
-  }
-  .history-grid,
-  .settings-grid,
-  .rules-layout,
-  .session-list {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .rules-sidebar,
-  .history-grid > .history-detail:first-child {
-    position: static;
-    max-height: none;
-  }
-  .rule-definition {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .workspace-grid.cols-3,
-  .workspace-grid.cols-4 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .page {
-    padding: 18px;
-  }
-}
 
-@media (max-width: 600px) {
-  .topbar {
-    gap: 3px;
-    padding-inline: 12px;
+  @media (max-width: 600px) {
+    .topbar {
+      gap: 3px;
+      padding-inline: 12px;
+    }
+    .brand {
+      display: flex;
+    }
+    .brand span:last-child,
+    .top-actions .sync-label {
+      display: none;
+    }
+    .nav {
+      gap: 2px;
+    }
+    .nav::before {
+      display: none;
+    }
+    .nav a {
+      padding: 7px 4px;
+      font-size: 12px;
+    }
+    .page {
+      padding: 16px 14px;
+    }
+    .page-head {
+      align-items: stretch;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .page-head > .action-list,
+    .page-head > div:last-child {
+      justify-content: flex-start;
+    }
+    .workspace-grid,
+    .workspace-grid.cols-2,
+    .workspace-grid.cols-3,
+    .workspace-grid.cols-4,
+    .workspace-flow-grid,
+    .form-grid,
+    .memory-toolbar,
+    .folder-grid,
+    .sync-folder-options,
+    .session-list {
+      grid-template-columns: 1fr;
+    }
+    .pane-head {
+      align-items: flex-start;
+      flex-direction: column;
+      padding: 14px;
+    }
+    .pane-title,
+    .pane-actions {
+      width: 100%;
+      min-width: 0;
+    }
+    .pane-actions {
+      justify-content: flex-start;
+    }
+    .selected-rule-context {
+      max-width: 100%;
+    }
+    .selected-rule-context .badge {
+      max-width: min(280px, calc(100vw - 88px));
+    }
+    .prompt-wrap {
+      padding-inline: 12px;
+    }
+    .prompt-wrap > div:first-child {
+      flex-wrap: wrap;
+    }
+    .prompt-wrap > div:first-child > .muted {
+      width: 100%;
+    }
+    .canvas-pane {
+      padding: 18px;
+    }
+    .inbox-refine-search {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .inbox-refine-search > span {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .mail-item {
+      grid-template-columns: 22px minmax(0, 1fr);
+    }
+    .mail-item > div {
+      min-width: 0;
+    }
+    .mail-item > small {
+      grid-column: 2;
+      padding-left: 0;
+    }
+    .pagination {
+      align-items: center;
+    }
+    .renderer-toolbar,
+    .renderer-actions,
+    .email-account-row {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .email-header,
+    .email-body-surface {
+      padding: 20px;
+    }
+    .renderer-toolbar {
+      padding: 10px 14px;
+    }
+    .email-account-row > span {
+      display: none;
+    }
+    .attachment-grid {
+      grid-template-columns: 1fr;
+    }
+    .attachment-section {
+      padding: 18px;
+    }
+    .rule-definition,
+    .rule-definition.rule-approval-definition {
+      grid-template-columns: 1fr;
+    }
+    .dialog {
+      width: calc(100vw - 20px);
+      padding: 16px;
+    }
+    .settings-grid > aside {
+      position: static;
+    }
+    .settings-grid > aside .card {
+      display: flex;
+      overflow-x: auto;
+    }
+    .settings-grid > aside .session-link {
+      flex: none;
+    }
+    .memory-row-head,
+    .folder-toolbar {
+      align-items: flex-start;
+      flex-direction: column;
+    }
   }
-  .brand {
-    display: flex;
-  }
-  .brand span:last-child,
-  .top-actions .sync-label {
-    display: none;
-  }
-  .nav {
-    gap: 2px;
-  }
-  .nav::before {
-    display: none;
-  }
-  .nav a {
-    padding: 7px 4px;
-    font-size: 12px;
-  }
-  .page {
-    padding: 16px 14px;
-  }
-  .page-head {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .page-head > .action-list,
-  .page-head > div:last-child {
-    justify-content: flex-start;
-  }
-  .workspace-grid,
-  .workspace-grid.cols-2,
-  .workspace-grid.cols-3,
-  .workspace-grid.cols-4,
-  .workspace-flow-grid,
-  .form-grid,
-  .memory-toolbar,
-  .folder-grid,
-  .sync-folder-options,
-  .session-list {
-    grid-template-columns: 1fr;
-  }
-  .pane-head {
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 14px;
-  }
-  .pane-title,
-  .pane-actions {
-    width: 100%;
-    min-width: 0;
-  }
-  .pane-actions {
-    justify-content: flex-start;
-  }
-  .selected-rule-context {
-    max-width: 100%;
-  }
-  .selected-rule-context .badge {
-    max-width: min(280px, calc(100vw - 88px));
-  }
-  .prompt-wrap {
-    padding-inline: 12px;
-  }
-  .prompt-wrap > div:first-child {
-    flex-wrap: wrap;
-  }
-  .prompt-wrap > div:first-child > .muted {
-    width: 100%;
-  }
-  .canvas-pane {
-    padding: 18px;
-  }
-  .inbox-refine-search {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .inbox-refine-search > span {
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-  .mail-item {
-    grid-template-columns: 22px minmax(0, 1fr);
-  }
-  .mail-item > div {
-    min-width: 0;
-  }
-  .mail-item > small {
-    grid-column: 2;
-    padding-left: 0;
-  }
-  .pagination {
-    align-items: center;
-  }
-  .renderer-toolbar,
-  .renderer-actions,
-  .email-account-row {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-  .email-header,
-  .email-body-surface {
-    padding: 20px;
-  }
-  .renderer-toolbar {
-    padding: 10px 14px;
-  }
-  .email-account-row > span {
-    display: none;
-  }
-  .attachment-grid {
-    grid-template-columns: 1fr;
-  }
-  .attachment-section {
-    padding: 18px;
-  }
-  .rule-definition,
-  .rule-definition.rule-approval-definition {
-    grid-template-columns: 1fr;
-  }
-  .dialog {
-    width: calc(100vw - 20px);
-    padding: 16px;
-  }
-  .settings-grid > aside {
-    position: static;
-  }
-  .settings-grid > aside .card {
-    display: flex;
-    overflow-x: auto;
-  }
-  .settings-grid > aside .session-link {
-    flex: none;
-  }
-  .memory-row-head,
-  .folder-toolbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
 
-/* Pane controls exist only on compact screens; both panes stay mounted. */
-.mobile-pane-switch {
-  margin: 0;
-  border: 0;
-  min-width: 0;
-}
-.mobile-pane-switch,
-.mobile-reader-back {
-  display: none;
-}
-
-@media (max-width: 900px) {
+  /* Pane controls exist only on compact screens; both panes stay mounted. */
   .mobile-pane-switch {
-    display: flex;
-    gap: 8px;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--line);
-    background: var(--panel);
+    margin: 0;
+    border: 0;
+    min-width: 0;
   }
-  .mobile-pane-switch .button {
-    flex: 1;
-    min-height: 44px;
-  }
-  .workspace-shell[data-mobile-pane="agent"] .canvas-pane,
-  .workspace-shell[data-mobile-pane="workspace"] .agent-pane {
-    display: none;
-  }
-  .workspace-shell {
-    display: flex;
-    flex-direction: column;
-    height: calc(100dvh - var(--app-header-height, 116px));
-    min-height: 360px;
-  }
-  .mobile-pane-switch {
-    flex: none;
-  }
-  .workspace-shell .agent-pane {
-    flex: 1;
-    height: auto;
-    min-height: 0;
-  }
-  .workspace-shell .canvas-pane {
-    flex: 1;
-    min-height: 0;
-    padding: 16px;
-  }
-  .inbox-layout[data-mobile-reader="closed"] .reader-pane,
-  .inbox-layout[data-mobile-reader="open"] .inbox-list,
-  .inbox-layout[data-mobile-reader="open"] .inbox-toolbar {
-    display: none;
-  }
+  .mobile-pane-switch,
   .mobile-reader-back {
-    display: flex;
-    margin: 8px 12px;
-    min-height: 44px;
+    display: none;
   }
-  .inbox-layout .inbox-list {
-    height: auto;
-    min-height: 320px;
-  }
-  .inbox-layout .mail-scroll {
-    max-height: none;
-    overflow: visible;
-  }
-  .inbox-layout .reader-pane {
-    min-height: 0;
-  }
-  .conversation {
-    padding: 14px;
-    overscroll-behavior: contain;
-  }
-  .pane-head {
-    padding: 12px 14px;
-  }
-}
 
-@media (max-width: 600px) {
-  .nav {
-    height: 44px;
-    scroll-snap-type: x proximity;
-    -webkit-overflow-scrolling: touch;
+  @media (max-width: 900px) {
+    .mobile-pane-switch {
+      display: flex;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .mobile-pane-switch .button {
+      flex: 1;
+      min-height: 44px;
+    }
+    .workspace-shell[data-mobile-pane="agent"] .canvas-pane,
+    .workspace-shell[data-mobile-pane="workspace"] .agent-pane {
+      display: none;
+    }
+    .workspace-shell {
+      display: flex;
+      flex-direction: column;
+      height: calc(100dvh - var(--app-header-height, 116px));
+      min-height: 360px;
+    }
+    .mobile-pane-switch {
+      flex: none;
+    }
+    .workspace-shell .agent-pane {
+      flex: 1;
+      height: auto;
+      min-height: 0;
+    }
+    .workspace-shell .canvas-pane {
+      flex: 1;
+      min-height: 0;
+      padding: 16px;
+    }
+    .inbox-layout[data-mobile-reader="closed"] .reader-pane,
+    .inbox-layout[data-mobile-reader="open"] .inbox-list,
+    .inbox-layout[data-mobile-reader="open"] .inbox-toolbar {
+      display: none;
+    }
+    .mobile-reader-back {
+      display: flex;
+      margin: 8px 12px;
+      min-height: 44px;
+    }
+    .inbox-layout .inbox-list {
+      height: auto;
+      min-height: 320px;
+    }
+    .inbox-layout .mail-scroll {
+      max-height: none;
+      overflow: visible;
+    }
+    .inbox-layout .reader-pane {
+      min-height: 0;
+    }
+    .conversation {
+      padding: 14px;
+      overscroll-behavior: contain;
+    }
+    .pane-head {
+      padding: 12px 14px;
+    }
   }
-  .nav a {
-    min-height: 44px;
-    display: inline-flex;
-    align-items: center;
-    padding-inline: 10px;
-    scroll-snap-align: start;
-  }
-  .button,
-  .button-sm,
-  .button-icon,
-  .tabs button,
-  .session-link {
-    min-height: 44px;
-  }
-  input:not([type="checkbox"]):not([type="radio"]),
-  select,
-  textarea {
-    font-size: 16px;
-  }
-  .prompt-wrap {
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
-  }
-  .prompt-wrap > div:first-child .button {
-    flex-shrink: 0;
-  }
-  .pane-actions,
-  .renderer-actions,
-  .email-account-row,
-  .sender-block > div,
-  .account-row > div {
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-  .email-header,
-  .email-body-surface {
-    padding: 16px 12px;
-  }
-  .email-header h1 {
-    font-size: 21px;
-    overflow-wrap: anywhere;
-  }
-  .email-account-row .badge {
-    max-width: 100%;
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
-  .settings-section,
-  .history-detail,
-  .draft-editor,
-  .rule-hero,
-  .rule-preview {
-    padding: 14px;
-  }
-  .account-row {
-    flex-direction: column;
-  }
-  .settings-grid > aside .card {
-    scrollbar-width: thin;
-  }
-  .selection-bar {
-    max-width: calc(100vw - 16px);
-    flex-wrap: wrap;
-    justify-content: center;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-  }
-  .dialog {
-    max-height: calc(100dvh - 24px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
+
+  @media (max-width: 600px) {
+    .nav {
+      height: 44px;
+      scroll-snap-type: x proximity;
+      -webkit-overflow-scrolling: touch;
+    }
+    .nav a {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      padding-inline: 10px;
+      scroll-snap-align: start;
+    }
+    .button,
+    .button-sm,
+    .button-icon,
+    .tabs button,
+    .session-link {
+      min-height: 44px;
+    }
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea {
+      font-size: 16px;
+    }
+    .prompt-wrap {
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+    .prompt-wrap > div:first-child .button {
+      flex-shrink: 0;
+    }
+    .pane-actions,
+    .renderer-actions,
+    .email-account-row,
+    .sender-block > div,
+    .account-row > div {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .email-header,
+    .email-body-surface {
+      padding: 16px 12px;
+    }
+    .email-header h1 {
+      font-size: 21px;
+      overflow-wrap: anywhere;
+    }
+    .email-account-row .badge {
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+    .settings-section,
+    .history-detail,
+    .draft-editor,
+    .rule-hero,
+    .rule-preview {
+      padding: 14px;
+    }
+    .account-row {
+      flex-direction: column;
+    }
+    .settings-grid > aside .card {
+      scrollbar-width: thin;
+    }
+    .selection-bar {
+      max-width: calc(100vw - 16px);
+      flex-wrap: wrap;
+      justify-content: center;
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
+    }
+    .dialog {
+      max-height: calc(100dvh - 24px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
   }
 }

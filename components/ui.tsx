@@ -28,7 +28,17 @@ export const Button = React.forwardRef<
   return (
     <button
       ref={ref}
-      className={cn("button", `button-${variant}`, `button-${size}`, className)}
+      className={cn(
+        "button",
+        `button-${variant}`,
+        `button-${size}`,
+        variant === "outline" && "outline",
+        variant === "ghost" && "ghost",
+        size === "sm" && "small",
+        size === "icon" && "icon",
+        className,
+      )}
+      data-variant={variant === "danger" ? "danger" : undefined}
       data-tooltip={tooltip}
       data-tooltip-side={tooltip ? tooltipSide : undefined}
       data-tooltip-align={tooltip ? tooltipAlign : undefined}
@@ -46,7 +56,9 @@ export function Badge({
   tone = "neutral",
   ...props
 }: React.HTMLAttributes<HTMLSpanElement> & { tone?: string }) {
-  return <span className={cn("badge", `badge-${tone}`, className)} {...props} />;
+  const variant =
+    tone === "good" ? "success" : tone === "attention" ? "warning" : tone === "error" ? "danger" : "secondary";
+  return <span className={cn("badge", `badge-${tone}`, className)} data-variant={variant} {...props} />;
 }
 export function Tooltip({
   content,
@@ -84,7 +96,7 @@ export function Label(props: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return <label className={cn("label", props.className)} {...props} />;
 }
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn("skeleton", className)} />;
+  return <div className={cn("skeleton", className)} role="status" aria-label="Loading" />;
 }
 export { Dialog } from "@/components/dialog";
 export function Tabs({
@@ -133,6 +145,46 @@ export function Tabs({
           {tab}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Every top-level screen uses the same heading, supporting copy, and action placement. */
+export function PageHeader({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <header className="page-head">
+      <div>
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </div>
+      {children}
+    </header>
+  );
+}
+
+/** Oatbase empty-state pattern, with application-owned actions. */
+export function EmptyState({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div data-variant="empty">
+      <h2>{title}</h2>
+      <p>{description}</p>
+      {children && <div data-slot="actions">{children}</div>}
     </div>
   );
 }

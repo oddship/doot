@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { LocalTime } from "@/components/local-time";
-import { Badge, Card, Input } from "@/components/ui";
+import { Badge, Card, Input, PageHeader } from "@/components/ui";
 import { apiJson } from "@/lib/client-api";
 import { navigateClient } from "@/lib/client-navigation";
 import { createRefreshQueue } from "@/lib/client-refresh";
@@ -51,13 +51,12 @@ export function HistoryScreen({ sessions: initialSessions }: { sessions: any[] }
   );
   return (
     <main className="page">
-      <header className="page-head">
-        <div>
-          <h1>History</h1>
-          <p>Saved work, approvals, and outcomes. Tasks continue while the browser is closed.</p>
-        </div>
+      <PageHeader
+        title="History"
+        description="Track syncs, conversations, and mailbox changes. Review work that needs your approval."
+      >
         <Badge>{sessions.length} history entries</Badge>
-      </header>
+      </PageHeader>
       {refreshError && (
         <p className="muted" role="status">
           {refreshError}

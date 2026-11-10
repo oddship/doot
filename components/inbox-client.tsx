@@ -19,7 +19,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmailFrame } from "@/components/email-frame";
 import { useToast } from "@/components/feedback";
 import { LocalTime } from "@/components/local-time";
-import { Badge, Button, Dialog, Input, Label, Skeleton, Tabs, Tooltip } from "@/components/ui";
+import { Badge, Button, Dialog, EmptyState, Input, Label, PageHeader, Skeleton, Tabs, Tooltip } from "@/components/ui";
 import { saveAgentHandoff } from "@/lib/client-agent-handoff";
 import { apiJson, errorMessage } from "@/lib/client-api";
 import { LatestRequest } from "@/lib/client-latest-request";
@@ -62,13 +62,15 @@ const MailRow = memo(function MailRow({
       className={`mail-item ${active ? "active" : ""}`}
       onClick={(event) => onOpen(mail, event.currentTarget.querySelector<HTMLButtonElement>(".mail-open") || undefined)}
     >
-      <input
-        type="checkbox"
-        aria-label={`Select ${mail.subject}`}
-        checked={selected}
-        onChange={() => onToggle(mail)}
-        onClick={(event) => event.stopPropagation()}
-      />
+      <label className="mail-select" onClick={(event) => event.stopPropagation()}>
+        <input
+          type="checkbox"
+          aria-label={`Select ${mail.subject}`}
+          checked={selected}
+          onChange={() => onToggle(mail)}
+          onClick={(event) => event.stopPropagation()}
+        />
+      </label>
       <button
         type="button"
         className="mail-open"
@@ -548,8 +550,7 @@ export function InboxClient({
   const pages = paginationItems(currentPage, totalPages);
   return (
     <main className="page inbox-page">
-      <header className="page-head">
-        <h1>Inbox</h1>
+      <PageHeader title="Inbox" description="Read, search, and organize email across your connected accounts.">
         <div className="action-list">
           <Tooltip content="Locally cached message headers">
             <Badge>{data.total} cached</Badge>
@@ -557,7 +558,7 @@ export function InboxClient({
           {data.mailbox?.messages != null && <Badge>{Number(data.mailbox.messages).toLocaleString()} in Inbox</Badge>}
           {data.mailbox?.unseen != null && <Badge>{Number(data.mailbox.unseen).toLocaleString()} unread</Badge>}
         </div>
-      </header>
+      </PageHeader>
       <div className="inbox-layout" data-mobile-reader={mobileReader && open ? "open" : "closed"}>
         <div className="inbox-toolbar">
           <label className="inbox-toolbar-field">
@@ -591,9 +592,10 @@ export function InboxClient({
               void load(0, account, query);
             }}
           >
-            <span>Search cached mail</span>
+            <label htmlFor="inbox-search">Search email</label>
             <div className="inbox-search-control">
               <Input
+                id="inbox-search"
                 aria-label="Search cached email headers"
                 value={query}
                 placeholder="Sender, subject, or search query"
@@ -631,6 +633,30 @@ export function InboxClient({
             </div>
           )}
           <div className="mail-scroll">
+            {!searchLoading && !data.messages.length && (
+              <EmptyState
+                title={
+                  !accounts.length
+                    ? "Connect your email"
+                    : activeQuery.trim()
+                      ? "No matching email"
+                      : "No email synced yet"
+                }
+                description={
+                  !accounts.length
+                    ? "Add an IMAP account to browse and search email on your own server."
+                    : activeQuery.trim()
+                      ? "Try a different sender, subject, or search query."
+                      : "Sync your account to bring email into Doot. If a sync is running, results will appear here."
+                }
+              >
+                {!accounts.length && (
+                  <a className="button outline button-outline" href="/settings#accounts">
+                    Add account
+                  </a>
+                )}
+              </EmptyState>
+            )}
             {data.messages.map((mail: Mail) => {
               const id = selectedMessageId(mail);
               return (
@@ -715,7 +741,7 @@ export function InboxClient({
               <div>
                 <MailOpen size={30} />
                 <strong>No message selected</strong>
-                <span>Choose a cached message to open it safely without changing its unread state.</span>
+                <span>Choose an email to read. Opening it here keeps its unread state unchanged.</span>
               </div>
             </div>
           ) : (

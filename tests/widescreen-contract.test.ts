@@ -39,7 +39,8 @@ describe("widescreen UI contract", () => {
       readFile("app/styles/responsive.css", "utf8"),
       readFile("app/styles/mail-reader.css", "utf8"),
     ]);
-    expect(globals.trim().endsWith('@import "./styles/responsive.css";')).toBe(true);
+    expect(globals).toContain('@import "./styles/responsive.css"');
+    expect(globals).toContain("@layer theme, base, components, animations, utilities, layout, design;");
     expect(responsive).toContain("overflow-x: auto");
     expect(responsive).toContain(".session-list");
     expect(mailReader).toContain("container-type: inline-size");
@@ -48,7 +49,7 @@ describe("widescreen UI contract", () => {
     expect(mailReader).toContain(".inbox-search-control");
     expect(inbox).toContain('className="inbox-toolbar"');
     expect(inbox).toContain('className="inbox-select-page"');
-    expect(inbox).toContain("Search cached mail");
+    expect(inbox).toContain("Search email");
     expect(inbox.indexOf('className="inbox-toolbar"')).toBeLessThan(inbox.indexOf('<section className="inbox-list"'));
   });
 });

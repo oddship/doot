@@ -1,144 +1,121 @@
-:root {
-  --radius: 4px;
-  --muted: #606a64;
-  --warn: #83500b;
-}
-.button,
-.card,
-.dialog,
-.toast,
-.tabs,
-.tabs button,
-.history-overview button,
-.history-proposal-action,
-.session-link {
-  border-radius: var(--radius);
-}
-.dialog,
-.toast,
-.tabs button.active {
-  background: var(--panel);
-}
-.dialog-head {
-  gap: 16px;
-  align-items: center;
-}
-.dialog-head h2 {
-  line-height: 1.35;
-}
-.dialog:focus {
-  outline: none;
-}
-.input,
-select {
-  min-height: 38px;
-}
-.button {
-  transition:
-    background-color 120ms,
-    border-color 120ms,
-    color 120ms;
-}
-.mail-open {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  text-align: left;
-  padding: 0;
-  cursor: pointer;
-}
-.mail-open .subject {
-  display: block;
-}
-.mail-open:focus-visible {
-  outline-offset: 4px;
-}
-.session-link .badge {
-  display: inline-flex;
-}
-.session-link .badge-good {
-  color: var(--good);
-}
-.session-link .badge-error {
-  color: var(--danger);
-}
-.session-link .badge-attention {
-  color: var(--warn);
-}
-.history-overview button:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.history-outcome,
-.schedule-card,
-.history-detail {
-  padding: 20px;
-}
-.background-job-status {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: 0 4px 20px #143c4015;
-}
-.background-job-status a {
-  min-height: 28px;
-  display: inline-flex;
-  align-items: center;
-}
-.navigation-progress {
-  position: fixed;
-  inset: 0 0 auto;
-  height: 3px;
-  z-index: 300;
-  background: var(--accent);
-  animation: navigation-progress 1s ease-in-out infinite;
-  transform-origin: left;
-}
-@keyframes navigation-progress {
-  0% {
-    transform: scaleX(0.15);
-    opacity: 0.7;
+@layer layout {
+  .dialog-head {
+    gap: 16px;
+    align-items: center;
   }
-  80% {
-    transform: scaleX(0.9);
-    opacity: 1;
+  .dialog-head h2 {
+    line-height: 1.35;
   }
-  100% {
-    transform: scaleX(1);
-    opacity: 0.4;
+  .dialog:focus {
+    outline: none;
   }
-}
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-@media (pointer: coarse) {
-  .button-sm,
-  .tabs button,
-  .history-kind-filters button {
-    min-height: 40px;
+  .button {
+    transition:
+      background-color 120ms,
+      border-color 120ms,
+      color 120ms;
   }
-}
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
+  .mail-open {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    text-align: left;
+    padding: 0;
+    cursor: pointer;
   }
-  .skeleton,
-  .spin,
+  .mail-open .subject {
+    display: block;
+  }
+  .mail-open:focus-visible {
+    outline-offset: 4px;
+  }
+  .session-link .badge {
+    display: inline-flex;
+  }
+  .session-link .badge-good {
+    color: var(--good);
+  }
+  .session-link .badge-error {
+    color: var(--danger);
+  }
+  .session-link .badge-attention {
+    color: var(--warn);
+  }
+  .history-overview button:hover {
+    border-color: var(--brand-accent);
+    background: var(--selection);
+  }
+  .history-outcome,
+  .schedule-card,
+  .history-detail {
+    padding: 20px;
+  }
+  .background-job-status {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 20px #143c4015;
+  }
+  .background-job-status a {
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+  }
   .navigation-progress {
-    animation: none;
+    position: fixed;
+    inset: 0 0 auto;
+    height: 3px;
+    z-index: 300;
+    background: var(--brand-accent);
+    animation: navigation-progress 1s ease-in-out infinite;
+    transform-origin: left;
   }
-  .button,
-  .tooltip-content,
-  .button::after,
-  .button::before {
-    transition: none;
+  @keyframes navigation-progress {
+    0% {
+      transform: scaleX(0.15);
+      opacity: 0.7;
+    }
+    80% {
+      transform: scaleX(0.9);
+      opacity: 1;
+    }
+    100% {
+      transform: scaleX(1);
+      opacity: 0.4;
+    }
+  }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  @media (pointer: coarse) {
+    .button-sm,
+    .tabs button,
+    .history-kind-filters button {
+      min-height: 40px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    .skeleton,
+    .spin,
+    .navigation-progress {
+      animation: none;
+    }
+    .button,
+    .tooltip-content,
+    .button::after,
+    .button::before {
+      transition: none;
+    }
   }
 }

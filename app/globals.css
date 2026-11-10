@@ -1,4 +1,5 @@
-@import "tailwindcss";
+@layer theme, base, components, animations, utilities, layout, design;
+@import "./vendor/oatbase/oatbase.css";
 @import "./styles/foundation.css";
 @import "./styles/workspace.css";
 @import "./styles/mail-reader.css";
@@ -8,7 +9,6 @@
 @import "./styles/inbox-pagination.css";
 @import "./styles/flows.css";
 @import "./styles/supporting-screens.css";
-@import "./styles/theme.css";
 @import "./styles/widescreen.css";
 @import "./styles/markdown.css";
 @import "./styles/drafts.css";
@@ -16,3 +16,5 @@
 @import "./styles/providers.css";
 @import "./styles/usability.css";
 @import "./styles/responsive.css";
+@import "./styles/tokens.css";
+@import "./styles/components.css";

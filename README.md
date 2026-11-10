@@ -10,7 +10,7 @@
   <a href="https://oddship.github.io/doot/demo/"><img src="docs/_static/doot-demo.png" width="1200" alt="Doot demo workspace with fictional email data" /></a>
 </p>
 
-Doot is an agent-first email workspace that investigates a local IMAP cache, builds useful views, and prepares reviewable actions. It never silently mutates your mailbox: archive, move, delete, folder, and Flow operations cross an explicit browser confirmation boundary.
+Doot is a self-hosted email workspace for reading, finding, organizing, and clearing email across IMAP accounts. Its optional assistant builds useful views and prepares actions for your review. It never silently mutates your mailbox: archive, move, delete, folder, and Flow operations cross an explicit browser confirmation boundary.
 
 > Doot is an early v0.1 release. Run it locally, keep backups, and review every proposed mailbox action.
 
@@ -38,7 +38,7 @@ npm ci
 npm run dev
 ```
 
-Open <http://127.0.0.1:8765>. In Settings, connect a model provider using one of the methods advertised by Pi, select a model, then add and sync an email account. Doot stores provider tokens, account credentials, and cached mail in the local SQLite database configured by `DOOT_DATABASE_PATH`; protect that file and never commit it.
+Open <http://127.0.0.1:8765>. In Settings, add an IMAP email account, choose the folders to sync, and sync it to browse and search your email. To use the assistant, also connect a model provider and select a model. Doot stores provider tokens, account credentials, and cached mail in the local SQLite database configured by `DOOT_DATABASE_PATH`; protect that file and never commit it.
 
 For day-to-day use, build once and run the production server:
 
@@ -67,6 +67,10 @@ docker compose up --build
 ```
 
 The Compose volume `doot-data` retains the SQLite database. See [configuration](docs/04-reference/01-configuration.md) before exposing the container beyond localhost.
+
+## Design system
+
+The application uses a pinned, locally bundled [Oatbase](https://github.com/oddship/oatbase) stylesheet. No CDN, sibling checkout, hosted font, or additional build tool is required. [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) defines the shared components, design tokens, product language, responsive behavior, and upstream update process.
 
 ## Development
 

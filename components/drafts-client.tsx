@@ -3,7 +3,7 @@
 import { Bot, FilePlus2, Save, SendToBack, Trash2 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
-import { Badge, Button, Card, Input, Label, Textarea } from "@/components/ui";
+import { Badge, Button, Card, Input, Label, PageHeader, Textarea } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
 import { flushAppStateWrites, hasPendingAppStateWrite, writeAppState } from "@/lib/client-app-state";
 import { saveSelectedDraft } from "@/lib/client-draft-selection";
@@ -215,8 +215,7 @@ export function DraftsClient({
 
   return (
     <main className="page drafts-page">
-      <header className="page-head">
-        <h1>Drafts</h1>
+      <PageHeader title="Drafts" description="Write and review email locally before saving it to your mail account.">
         <div style={{ display: "flex", gap: 8 }}>
           <Button
             variant="outline"
@@ -234,7 +233,7 @@ export function DraftsClient({
             <FilePlus2 size={16} /> New draft
           </Button>
         </div>
-      </header>
+      </PageHeader>
       <div className={`drafts-layout ${drafts.length ? "" : "drafts-layout-empty"}`}>
         <Card className="draft-list">
           {drafts.length ? (
@@ -255,7 +254,7 @@ export function DraftsClient({
               </button>
             ))
           ) : (
-            <div className="draft-empty">
+            <div className="draft-empty" data-variant="empty" data-size="compact">
               <FilePlus2 size={25} />
               <strong>No drafts yet</strong>
               <span>Choose New draft or Draft with Doot.</span>
@@ -381,7 +380,7 @@ export function DraftsClient({
               </div>
             </>
           ) : (
-            <div className="draft-empty">
+            <div className="draft-empty" data-variant="empty" data-size="compact">
               <Bot size={28} />
               <strong>No draft selected</strong>
               <span>Create a blank draft or start one in chat with Draft with Doot.</span>

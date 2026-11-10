@@ -1,4 +1,4 @@
-# Doot — brand direction, round one
+# Doot — product and design language
 
 ## Brand idea
 
@@ -12,7 +12,7 @@ The distinction is deliberate: *daak* is the mail, while *doot* is the actor han
 - Endorsement: **by Oddship**
 - Full formal name: **Oddship Doot**
 - Devanagari anchor: **दूत**, used sparingly in the mark and brand moments
-- Category: local email emissary
+- Category: self-hosted email management
 
 ## Positioning
 
@@ -22,7 +22,7 @@ For people with inboxes that have become working archives, Doot is a local email
 
 - Calm, precise, observant
 - Proactive without presuming authority
-- Technical without “AI magic” theatre
+- Plain language first; technical details only where they support a decision
 - Uses direct verbs: inspect, find, prepare, review, apply
 - Says what changed and what did not
 
@@ -34,10 +34,12 @@ For people with inboxes that have become working archives, Doot is a local email
 
 ## Visual system
 
-- Warm paper background from rohanverma.net for long-session readability
+- Quiet neutral surfaces with white reading panels for long-session readability
 - Deep ocean ink and peacock cyan from Oddship for navigation and Doot actions
 - Marigold for human attention, selection, and approval boundaries
-- IBM Plex Mono–style system stack, thin rules, square corners, bracketed navigation
+- Oatbase semantic controls and tokens, system sans-serif for comfortable reading, a consistent spacing scale, softly rounded surfaces, and clearly named navigation
+- Monospace is reserved for code, technical identifiers, and logs
+- The maintained component, content, and responsive contracts live in [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md)
 - The D-shaped messenger mark combines an envelope fold, forward motion, and a marigold dispatch dot
 - The full `दूत` spelling remains a cultural anchor in considered brand moments, not inside the compact mark
 

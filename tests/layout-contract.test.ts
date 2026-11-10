@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 import { compactCss, readAppCss } from "./source-contract";
 
 describe("application page width", () => {
-  it("keeps all standard pages full-width like the workspace", async () => {
+  it("keeps standard pages fluid with a shared readable maximum", async () => {
     const css = compactCss(await readAppCss());
-    expect(css).toContain(".page{width:100%;max-width:none;margin:0;padding:28px;}");
+    expect(css).toContain(".page{width:100%;max-width:1600px;margin:0 auto;padding:var(--space-8);}");
     expect(css).not.toContain("max-width:1440px");
   });
 

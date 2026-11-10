@@ -8,7 +8,7 @@ describe("Doot brand", () => {
     const header = await readFile("components/app-header.tsx", "utf8");
     const brand = await readFile("BRAND.md", "utf8");
     const mark = await readFile("public/doot-mark.svg", "utf8");
-    expect(layout).toContain("Doot — your email emissary");
+    expect(layout).toContain("Doot — take control of your email");
     expect(header).toContain("by oddship");
     expect(header).toContain("/doot-mark.svg");
     expect(mark).toContain("Doot messenger mark");
@@ -17,10 +17,10 @@ describe("Doot brand", () => {
     expect(brand).toContain("Doot may prepare; the user approves");
   });
 
-  it("keeps the warm paper, deep-ocean, and marigold visual tokens", async () => {
+  it("uses Oat semantic tokens with Doot accent and mark colors", async () => {
     const css = compactCss(await readAppCss());
-    expect(css).toContain("--bg:#f5f1e8");
-    expect(css).toContain("--ocean-deep:#0d292c");
+    expect(css).toContain("--bg:var(--background)");
+    expect(css).toContain("--primary:#006a73");
     expect(css).toContain("--marigold:#e4a326");
     expect(css).toContain(".brand-copy");
   });

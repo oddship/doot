@@ -17,7 +17,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { LocalTime } from "@/components/local-time";
 import { ScheduleControls } from "@/components/schedule-controls";
-import { Badge, Button, Card, Dialog, Input, Label, Textarea, Tooltip } from "@/components/ui";
+import { Badge, Button, Card, Dialog, Input, Label, PageHeader, Textarea, Tooltip } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
 import { LatestRequest } from "@/lib/client-latest-request";
 import { navigateClient, replaceClientUrl } from "@/lib/client-navigation";
@@ -267,13 +267,15 @@ export function RulesClient({
 
   return (
     <main className="page rules-page">
-      <header className="page-head">
-        <h1>Flows</h1>
+      <PageHeader
+        title="Flows"
+        description="Find matching email, review the changes, and apply them when you are ready."
+      >
         <Button tooltip="Create a reusable filter" onClick={() => openEditor()}>
           <Plus size={15} />
           New flow
         </Button>
-      </header>
+      </PageHeader>
       <div className="rules-layout">
         <aside className="rules-sidebar">
           <div className="rules-summary">
@@ -316,7 +318,7 @@ export function RulesClient({
               </Link>
             ))
           ) : (
-            <div className="rules-empty">
+            <div className="rules-empty" data-variant="empty" data-size="compact">
               <Filter size={25} />
               <p>No flows yet.</p>
               <span>Build one manually or ask Doot to suggest reusable patterns.</span>
@@ -450,7 +452,7 @@ export function RulesClient({
                     )}
                   </>
                 ) : (
-                  <div className="rules-empty">
+                  <div className="rules-empty" data-variant="empty" data-size="compact">
                     <Eye size={24} />
                     <p>Loading a safe preview…</p>
                   </div>
@@ -459,7 +461,7 @@ export function RulesClient({
               <ScheduleControls kind="flow" ruleId={active.id} />
             </>
           ) : (
-            <div className="rules-empty">
+            <div className="rules-empty" data-variant="empty" data-size="compact">
               <Filter size={28} />
               <p>Select or create a flow.</p>
             </div>

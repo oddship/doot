@@ -2,7 +2,7 @@
 import { Brain, CheckCircle2, LoaderCircle, Paperclip, Send, Wrench, XCircle } from "lucide-react";
 import Image from "next/image";
 import { type FormEvent, memo, type ReactNode, useEffect, useRef } from "react";
-import { Button, Card, cn, Textarea } from "@/components/ui";
+import { Button, Card, cn, EmptyState, Textarea } from "@/components/ui";
 
 export function Conversation({ children }: { children: ReactNode }) {
   const container = useRef<HTMLDivElement>(null);
@@ -46,16 +46,25 @@ export function ConversationEmpty() {
   return (
     <div className="conversation-empty">
       <Image className="agent-mark" src="/doot-mark.svg" alt="" width={44} height={44} />
-      <h2>Start with a task</h2>
-      <p>Try “find last month’s receipts,” or select messages in Inbox and return here to discuss them.</p>
+      <EmptyState
+        title="Make room for what matters"
+        description="Find receipts, catch up on unread email, or prepare a cleanup. Doot asks you to review mailbox changes before applying them."
+      >
+        <a className="button outline button-outline" href="/inbox">
+          Browse email
+        </a>
+        <a className="button ghost button-ghost" href="/settings#accounts">
+          Connect an account
+        </a>
+      </EmptyState>
     </div>
   );
 }
 export function Message({ role, children }: { role: "user" | "assistant" | "system"; children: ReactNode }) {
   return (
-    <div className={cn("message", `message-${role}`)}>
+    <div className={cn("message", `message-${role}`)} data-message={role}>
       <span className="message-role">{role === "assistant" ? "Doot" : role}</span>
-      <div>{children}</div>
+      <div data-message-body>{children}</div>
     </div>
   );
 }
@@ -147,7 +156,7 @@ export function PromptInput({
     <form className="prompt-box" onSubmit={submit}>
       <Textarea
         aria-label="Message Doot"
-        placeholder="Ask Doot about your cached mail…"
+        placeholder="Find email, catch up, or prepare a cleanup…"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {

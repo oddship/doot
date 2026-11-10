@@ -9,8 +9,8 @@ import { FeedbackProvider } from "@/components/feedback";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Doot — your email emissary",
-  description: "A trusted local email emissary by Oddship",
+  title: "Doot — take control of your email",
+  description: "Self-hosted email management. Read, organize, and clear your inbox with changes you review.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
