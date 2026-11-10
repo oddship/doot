@@ -109,6 +109,7 @@ export function WorkspaceClient({
 }) {
   const toast = useToast();
   const [workspace, setWorkspace] = useState(initialWorkspace?.legacy || initialWorkspace);
+  const [mobilePane, setMobilePane] = useState<"agent" | "workspace">("agent");
   const [entries, setEntries] = useState<WorkspaceEntry[]>(initialEntries);
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
@@ -571,8 +572,26 @@ export function WorkspaceClient({
     ? `${agentModel.provider} · ${agentModel.name || agentModel.id}`
     : agentModel?.name || "Automatic";
   return (
-    <main className="workspace-shell">
-      <section className="agent-pane">
+    <main className="workspace-shell" data-mobile-pane={mobilePane}>
+      <fieldset className="mobile-pane-switch" aria-label="Workspace view">
+        <Button
+          variant={mobilePane === "agent" ? "default" : "outline"}
+          aria-pressed={mobilePane === "agent"}
+          aria-controls="workspace-agent"
+          onClick={() => setMobilePane("agent")}
+        >
+          Chat
+        </Button>
+        <Button
+          variant={mobilePane === "workspace" ? "default" : "outline"}
+          aria-pressed={mobilePane === "workspace"}
+          aria-controls="workspace-canvas"
+          onClick={() => setMobilePane("workspace")}
+        >
+          Workspace
+        </Button>
+      </fieldset>
+      <section className="agent-pane" id="workspace-agent">
         <div className="pane-head">
           <div className="pane-title">
             <h1>Doot</h1>
@@ -701,7 +720,7 @@ export function WorkspaceClient({
           />
         </div>
       </section>
-      <section className="canvas-pane">
+      <section className="canvas-pane" id="workspace-canvas">
         {workspace ? (
           <WorkspaceBoundary value={workspace} />
         ) : (

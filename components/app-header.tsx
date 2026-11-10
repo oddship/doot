@@ -3,6 +3,7 @@
 import { RefreshCw } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { SyncButton } from "@/components/sync-button";
 import { TopNav } from "@/components/top-nav";
 import { flushAppStateWrites } from "@/lib/client-app-state";
@@ -17,8 +18,20 @@ export function AppHeader({
   onNavigate?: (path: string) => void;
   logoPath?: string;
 }) {
+  const header = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const element = header.current;
+    if (!element) return;
+    const measure = () =>
+      document.documentElement.style.setProperty("--app-header-height", `${element.getBoundingClientRect().height}px`);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   return (
-    <header className="topbar">
+    <header className="topbar" ref={header}>
       <Link
         href="/"
         className="brand"

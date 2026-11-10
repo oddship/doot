@@ -144,6 +144,7 @@ export function InboxClient({
   const [selected, setSelected] = useState<string[]>([]);
   const selectedRef = useRef<string[]>([]);
   const [open, setOpen] = useState<Mail | null>(null);
+  const [mobileReader, setMobileReader] = useState(Boolean(initialOpenUid));
   const [detail, setDetail] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [proposal, setProposal] = useState<any>(null);
@@ -290,6 +291,7 @@ export function InboxClient({
   }, []);
   const openMessage = useCallback(
     async (mail: Mail) => {
+      setMobileReader(true);
       reader.current = mail;
       setOpen(mail);
       setDetail(null);
@@ -485,7 +487,7 @@ export function InboxClient({
           {data.mailbox?.unseen != null && <Badge>{Number(data.mailbox.unseen).toLocaleString()} unread</Badge>}
         </div>
       </header>
-      <div className="inbox-layout">
+      <div className="inbox-layout" data-mobile-reader={mobileReader && open ? "open" : "closed"}>
         <div className="inbox-toolbar">
           <label className="inbox-toolbar-field">
             <span>Account</span>
@@ -633,7 +635,10 @@ export function InboxClient({
             </label>
           </div>
         </section>
-        <article className="reader-pane">
+        <article className="reader-pane" aria-label="Message reader">
+          <Button className="mobile-reader-back" variant="outline" onClick={() => setMobileReader(false)}>
+            ← Back to inbox
+          </Button>
           {!open ? (
             <div className="reader-empty">
               <div>

@@ -40,6 +40,18 @@ npm run dev
 
 Open <http://127.0.0.1:8765>. In Settings, connect a model provider using one of the methods advertised by Pi, select a model, then add and sync an email account. Doot stores provider tokens, account credentials, and cached mail in the local SQLite database configured by `DOOT_DATABASE_PATH`; protect that file and never commit it.
 
+For day-to-day use, build once and run the production server:
+
+```bash
+npm run build
+npm start
+```
+
+The development server compiles routes on demand. Production builds remove that
+compilation from page navigation. On phones, switch between Chat and Workspace
+at the top of the workspace; opening a message shows the reader with a Back to
+inbox control that keeps the current search and cached message.
+
 With Nix and direnv:
 
 ```bash

@@ -230,3 +230,157 @@
     flex-direction: column;
   }
 }
+
+/* Pane controls exist only on compact screens; both panes stay mounted. */
+.mobile-pane-switch {
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.mobile-pane-switch,
+.mobile-reader-back {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .mobile-pane-switch {
+    display: flex;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .mobile-pane-switch .button {
+    flex: 1;
+    min-height: 44px;
+  }
+  .workspace-shell[data-mobile-pane="agent"] .canvas-pane,
+  .workspace-shell[data-mobile-pane="workspace"] .agent-pane {
+    display: none;
+  }
+  .workspace-shell {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - var(--app-header-height, 116px));
+    min-height: 360px;
+  }
+  .mobile-pane-switch {
+    flex: none;
+  }
+  .workspace-shell .agent-pane {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+  .workspace-shell .canvas-pane {
+    flex: 1;
+    min-height: 0;
+    padding: 16px;
+  }
+  .inbox-layout[data-mobile-reader="closed"] .reader-pane,
+  .inbox-layout[data-mobile-reader="open"] .inbox-list,
+  .inbox-layout[data-mobile-reader="open"] .inbox-toolbar {
+    display: none;
+  }
+  .mobile-reader-back {
+    display: flex;
+    margin: 8px 12px;
+    min-height: 44px;
+  }
+  .inbox-layout .inbox-list {
+    height: auto;
+    min-height: 320px;
+  }
+  .inbox-layout .mail-scroll {
+    max-height: none;
+    overflow: visible;
+  }
+  .inbox-layout .reader-pane {
+    min-height: 0;
+  }
+  .conversation {
+    padding: 14px;
+    overscroll-behavior: contain;
+  }
+  .pane-head {
+    padding: 12px 14px;
+  }
+}
+
+@media (max-width: 600px) {
+  .nav {
+    height: 44px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav a {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding-inline: 10px;
+    scroll-snap-align: start;
+  }
+  .button,
+  .button-sm,
+  .button-icon,
+  .tabs button,
+  .session-link {
+    min-height: 44px;
+  }
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  .prompt-wrap {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .prompt-wrap > div:first-child .button {
+    flex-shrink: 0;
+  }
+  .pane-actions,
+  .renderer-actions,
+  .email-account-row,
+  .sender-block > div,
+  .account-row > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .email-header,
+  .email-body-surface {
+    padding: 16px 12px;
+  }
+  .email-header h1 {
+    font-size: 21px;
+    overflow-wrap: anywhere;
+  }
+  .email-account-row .badge {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .settings-section,
+  .history-detail,
+  .draft-editor,
+  .rule-hero,
+  .rule-preview {
+    padding: 14px;
+  }
+  .account-row {
+    flex-direction: column;
+  }
+  .settings-grid > aside .card {
+    scrollbar-width: thin;
+  }
+  .selection-bar {
+    max-width: calc(100vw - 16px);
+    flex-wrap: wrap;
+    justify-content: center;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .dialog {
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}

@@ -91,6 +91,24 @@ afterEach(async () => {
 });
 
 describe("responsive Inbox requests and rendering", () => {
+  it("returns from the mobile reader without losing the search or fetching the cached body again", async () => {
+    await render("from:sender");
+    apiJson.mockResolvedValue({ body_text: "Cached message", attachments: [] });
+    await open(0);
+    const layout = container.querySelector(".inbox-layout")!;
+    expect(layout.getAttribute("data-mobile-reader")).toBe("open");
+    const calls = apiJson.mock.calls.length;
+    await act(async () => container.querySelector<HTMLButtonElement>(".mobile-reader-back")!.click());
+    expect(layout.getAttribute("data-mobile-reader")).toBe("closed");
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Search cached email headers"]')!.value).toBe(
+      "from:sender",
+    );
+    expect(container.querySelectorAll(".mail-item")).toHaveLength(2);
+    await open(0);
+    expect(layout.getAttribute("data-mobile-reader")).toBe("open");
+    expect(apiJson.mock.calls.length).toBe(calls);
+  });
+
   it("clears the selection reference before the next checkbox toggle", async () => {
     await render();
     const toggle = async (index: number) =>
