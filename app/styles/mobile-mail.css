@@ -1,0 +1,288 @@
+@layer design {
+  .desktop-navigation {
+    display: contents;
+  }
+  .mobile-menu-button,
+  .mobile-page-name,
+  .inbox-filter-toggle,
+  .mobile-inbox-summary,
+  .timestamp-compact {
+    display: none;
+  }
+  .mobile-navigation {
+    display: grid;
+    gap: var(--space-1);
+  }
+  .mobile-navigation a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: var(--space-3);
+    border-radius: var(--radius-medium);
+    color: var(--foreground);
+  }
+  .mobile-navigation a[aria-current="page"] {
+    color: var(--primary);
+    background: var(--accent);
+    font-weight: 600;
+  }
+  @media (max-width: 900px) {
+    .topbar {
+      height: 56px;
+      min-height: 56px;
+      flex-wrap: nowrap;
+      gap: var(--space-2);
+      padding: 6px 12px;
+    }
+    .topbar .brand,
+    .desktop-navigation {
+      display: none;
+    }
+    .topbar .mobile-menu-button {
+      display: inline-flex;
+    }
+    .mobile-page-name {
+      display: block;
+      flex: 1;
+      min-width: 0;
+      font-size: 1.125rem;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .top-actions {
+      margin-left: auto;
+    }
+    .top-actions .button {
+      min-width: 44px;
+      width: 44px;
+      min-height: 44px;
+      padding: 0;
+    }
+    .top-actions .sync-label {
+      display: none;
+    }
+    .inbox-page.page {
+      padding: 0;
+    }
+    /* The app bar names this screen; retain the main heading for assistive technology. */
+    .inbox-page > .page-head {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .inbox-layout {
+      border: 0;
+      border-radius: 0;
+    }
+    .inbox-toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 44px;
+      gap: 6px 8px;
+      padding: 8px 12px 6px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+    }
+    .inbox-toolbar > form.inbox-toolbar-field {
+      grid-column: 1;
+      grid-row: 1;
+      gap: 0;
+    }
+    .inbox-toolbar > form > label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .inbox-search-control {
+      grid-template-columns: minmax(0, 1fr) 44px;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-medium);
+      background: var(--faint);
+      overflow: hidden;
+    }
+    .inbox-search-control:focus-within {
+      outline: 2px solid var(--ring);
+      outline-offset: 1px;
+    }
+    .inbox-search-control .input {
+      min-height: 44px;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    .inbox-search-submit {
+      width: 44px;
+      min-width: 44px;
+      min-height: 44px;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--primary);
+    }
+    .inbox-search-submit:hover:not(:disabled) {
+      background: var(--accent);
+    }
+    .inbox-search-submit > span {
+      display: none;
+    }
+    .inbox-filter-toggle {
+      display: inline-flex;
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .inbox-filter-toggle[aria-expanded="true"] {
+      background: var(--accent);
+      color: var(--primary);
+    }
+    .mobile-inbox-summary {
+      display: flex;
+      grid-column: 1 / -1;
+      grid-row: 2;
+      justify-content: space-between;
+      align-items: center;
+      min-width: 0;
+      gap: 12px;
+      font-size: 0.75rem;
+      color: var(--muted-foreground);
+      line-height: 20px;
+    }
+    .mobile-inbox-summary > span:first-child {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mobile-inbox-summary > span:last-child {
+      flex: none;
+    }
+    .inbox-account-field,
+    .inbox-select-page {
+      display: none;
+    }
+    .inbox-toolbar[data-filters-open="true"] .inbox-account-field {
+      display: grid;
+      grid-column: 1;
+      grid-row: 3;
+    }
+    .inbox-toolbar[data-filters-open="true"] .inbox-select-page {
+      display: inline-flex;
+      grid-column: 2;
+      grid-row: 3;
+      align-self: end;
+      width: 44px;
+      min-width: 44px;
+      overflow: hidden;
+      padding: 0;
+      font-size: 0;
+      gap: 0;
+    }
+    .inbox-toolbar[data-filters-open="true"] .inbox-select-page svg {
+      width: 20px;
+      height: 20px;
+    }
+    .inbox-list {
+      border: 0;
+    }
+    .mail-item {
+      position: relative;
+      grid-template-columns: 44px minmax(0, 1fr);
+      grid-template-rows: auto;
+      gap: 0 8px;
+      padding: 8px 12px;
+      min-height: 76px;
+    }
+    .mail-select {
+      grid-column: 1;
+      grid-row: 1;
+      align-self: center;
+      width: 44px;
+      min-height: 44px;
+    }
+    .mail-open {
+      grid-column: 2;
+      grid-row: 1;
+      display: grid;
+      align-content: center;
+      gap: 0;
+      min-height: 60px;
+      padding: 0;
+    }
+    .mail-open strong {
+      padding-right: 64px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      line-height: 20px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mail-item[data-unread="true"] .mail-open strong {
+      font-weight: 700;
+    }
+    .mail-open .subject {
+      display: block;
+      height: 20px;
+      margin: 0;
+      font-size: 0.875rem;
+      line-height: 20px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mail-open .mail-account {
+      display: block;
+      font-size: 0.6875rem;
+      line-height: 16px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mail-cache-status {
+      display: none;
+    }
+    .mail-item > .mail-date {
+      position: absolute;
+      top: 8px;
+      right: 12px;
+      grid-column: auto;
+      width: 60px;
+      padding: 0;
+      font-size: 0.6875rem;
+      line-height: 20px;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .mail-date .timestamp-full {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .timestamp-compact {
+      display: inline;
+    }
+  }
+  /* Touch browsers keep :hover after a tap. Tooltips should never obscure touch navigation. */
+  @media (hover: none), (pointer: coarse) {
+    .button[data-tooltip]::after,
+    .button[data-tooltip]::before,
+    .button[data-tooltip]:is(:hover, :focus-visible)::after,
+    .button[data-tooltip]:is(:hover, :focus-visible)::before,
+    .tooltip-content,
+    .tooltip-root:is(:hover, :focus-within) .tooltip-content {
+      display: none;
+    }
+  }
+}

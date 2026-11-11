@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { flushAppStateWrites } from "@/lib/client-app-state";
 import { navigateClient } from "@/lib/client-navigation";
 
-const items = [
+export const navigationItems = [
   { href: "/", label: "Workspace", matches: (path: string) => path === "/" },
   { href: "/inbox", label: "Inbox", matches: (path: string) => path.startsWith("/inbox") },
   { href: "/drafts", label: "Drafts", matches: (path: string) => path.startsWith("/drafts") },
@@ -14,12 +14,22 @@ const items = [
   { href: "/settings", label: "Settings", matches: (path: string) => path.startsWith("/settings") },
 ];
 
-export function TopNav({ activePath, onNavigate }: { activePath?: string; onNavigate?: (path: string) => void } = {}) {
+export function TopNav({
+  activePath,
+  onNavigate,
+  className = "nav",
+  id,
+}: {
+  activePath?: string;
+  onNavigate?: (path: string) => void;
+  className?: string;
+  id?: string;
+} = {}) {
   const pathname = usePathname();
   const currentPath = activePath || pathname;
   return (
-    <nav className="nav" aria-label="Primary navigation">
-      {items.map((item) => {
+    <nav className={className} id={id} aria-label="Primary navigation">
+      {navigationItems.map((item) => {
         const active = item.matches(currentPath);
         return (
           <Link

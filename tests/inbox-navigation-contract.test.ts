@@ -116,9 +116,9 @@ describe("Inbox deep links", () => {
     expect(css).toContain(".inbox-page .inbox-layout{height:auto;min-height:0;flex:1;");
   });
 
-  it("shows both localized date and time in the Inbox list", async () => {
+  it("keeps full localized timestamps with compact mobile presentation", async () => {
     const source = await readFile("components/inbox-client.tsx", "utf8");
-    expect(source).toContain("<LocalTime value={mail.date} />");
+    expect(source).toContain("<LocalTime value={mail.date} responsive />");
     expect(source).not.toContain("toLocaleDateString");
   });
 });

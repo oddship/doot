@@ -113,3 +113,20 @@ controls and dialogs, pending Flow previews, reader Back/Forward, and generated
 message links. Browser verification must not sync or mutate a real mailbox.
 Use isolated fixtures for mutation and first-run tests. Production build checks
 must use a temporary database rather than the user's mailbox database.
+
+## Mobile mail density
+
+At compact widths, the app bar is one 56px row: navigation menu, current section,
+and sync. All destinations remain available in the focus-managed navigation
+dialog. Branding and the horizontal destination strip belong on larger screens.
+The Inbox uses search first, a concise account/count line, and expandable account
+and selection controls. Its explanatory page heading stays available to assistive
+technology without consuming the phone's reading area.
+
+Mail rows use a human sender name, a single-line subject, compact account context,
+and a right-aligned local time or short date. Full sender headers remain in the
+title and full localized timestamps remain accessible and visible on desktop.
+Selection targets remain 44px. Do not fetch bodies just to populate previews.
+Touch devices do not show hover tooltips. Check first-message offset and visible
+row count as well as overflow: at 390px the collapsed Inbox should reach its first
+message within 150px and fit at least six complete rows in an 844px viewport.

@@ -354,3 +354,17 @@ describe("responsive Inbox requests and rendering", () => {
     });
   });
 });
+
+it("opens compact filters without discarding or submitting the pending search", async () => {
+  await render();
+  await type("from:sender");
+  const requests = apiJson.mock.calls.length;
+  const toggle = container.querySelector<HTMLButtonElement>('[aria-label="Filter and select email"]')!;
+  await act(async () => toggle.click());
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  expect(container.querySelector(".inbox-toolbar")?.getAttribute("data-filters-open")).toBe("true");
+  await act(async () => toggle.click());
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  expect(container.querySelector<HTMLInputElement>("#inbox-search")?.value).toBe("from:sender");
+  expect(apiJson.mock.calls.length).toBe(requests);
+});

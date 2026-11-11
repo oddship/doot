@@ -12,6 +12,7 @@ import {
   Reply,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -27,6 +28,7 @@ import { reuseMailRows } from "@/lib/client-mail-rows";
 import { navigateClient, replaceClientUrl } from "@/lib/client-navigation";
 import { saveSelectedSearch } from "@/lib/client-search-selection";
 import { loadSelectedIds, saveSelectedIds, selectedMessageId, selectedMessageRef } from "@/lib/client-selection";
+import { senderDisplayName } from "@/lib/mail-presentation";
 import { MessageReaderCache } from "@/lib/message-reader-cache";
 import { paginationItems } from "@/lib/pagination";
 import { useCacheEvents } from "@/lib/use-cache-events";
@@ -60,6 +62,7 @@ const MailRow = memo(function MailRow({
   return (
     <div
       className={`mail-item ${active ? "active" : ""}`}
+      data-unread={mail.unread ? "true" : undefined}
       onClick={(event) => onOpen(mail, event.currentTarget.querySelector<HTMLButtonElement>(".mail-open") || undefined)}
     >
       <label className="mail-select" onClick={(event) => event.stopPropagation()}>
@@ -80,14 +83,14 @@ const MailRow = memo(function MailRow({
         aria-label={`Open ${mail.subject || "message"}`}
         aria-pressed={active}
       >
-        <strong>{mail.sender}</strong>
+        <strong title={mail.sender}>{senderDisplayName(mail.sender)}</strong>
         <span className="subject">{mail.subject || "(no subject)"}</span>
-        <small>
+        <small className="mail-account" title={`${mail.account_email} · ${mail.folder}`}>
           {mail.account_email} · {mail.folder}
-          {mail.body_fetched ? " · cached body" : ""}
+          {mail.body_fetched ? <span className="mail-cache-status"> · cached body</span> : ""}
         </small>
       </button>
-      <small>{mail.date ? <LocalTime value={mail.date} /> : ""}</small>
+      <small className="mail-date">{mail.date ? <LocalTime value={mail.date} responsive /> : ""}</small>
     </div>
   );
 });
@@ -112,6 +115,7 @@ export function InboxClient({
   initialLimit?: number;
 }) {
   const toast = useToast();
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [account, setAccount] = useState(initialAccount);
   const [query, setQuery] = useState(initialQuery);
   const [activeQuery, setActiveQuery] = useState(initialQuery);
@@ -560,8 +564,8 @@ export function InboxClient({
         </div>
       </PageHeader>
       <div className="inbox-layout" data-mobile-reader={mobileReader && open ? "open" : "closed"}>
-        <div className="inbox-toolbar">
-          <label className="inbox-toolbar-field">
+        <div className="inbox-toolbar" data-filters-open={filtersOpen}>
+          <label className="inbox-toolbar-field inbox-account-field" id="inbox-account-controls">
             <span>Account</span>
             <select
               className="inbox-account-select"
@@ -598,15 +602,38 @@ export function InboxClient({
                 id="inbox-search"
                 aria-label="Search cached email headers"
                 value={query}
-                placeholder="Sender, subject, or search query"
+                placeholder="Search email"
                 onChange={(event) => setQuery(event.target.value)}
               />
-              <Button className="inbox-search-submit" type="submit" size="sm" tooltip="Search cached email headers">
+              <Button
+                className="inbox-search-submit"
+                aria-label="Search email"
+                type="submit"
+                size="sm"
+                tooltip="Search cached email headers"
+              >
                 {searchLoading ? <LoaderCircle size={15} className="spin" /> : <Search size={15} />}
-                Search
+                <span>Search</span>
               </Button>
             </div>
           </form>
+          <Button
+            className="inbox-filter-toggle"
+            variant="ghost"
+            size="icon"
+            aria-label="Filter and select email"
+            aria-expanded={filtersOpen}
+            aria-controls="inbox-account-controls"
+            onClick={() => setFiltersOpen((value) => !value)}
+          >
+            <SlidersHorizontal size={20} />
+          </Button>
+          <div className="mobile-inbox-summary">
+            <span>
+              {account === "all" ? "All accounts" : accounts.find((item) => item.name === account)?.email || account}
+            </span>
+            <span>{data.total.toLocaleString()} emails</span>
+          </div>
           <Button
             className="inbox-select-page"
             size="sm"
