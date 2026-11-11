@@ -130,3 +130,21 @@ Selection targets remain 44px. Do not fetch bodies just to populate previews.
 Touch devices do not show hover tooltips. Check first-message offset and visible
 row count as well as overflow: at 390px the collapsed Inbox should reach its first
 message within 150px and fit at least six complete rows in an 844px viewport.
+
+The same compact layout applies to every mobile destination. Top-level headings
+and introductions stay in the accessibility tree but do not repeat the app-bar
+title. Settings shows one chosen section while keeping unsaved form fields
+mounted; hash and saved-item deep links select the matching section. Drafts and
+Flows use native pickers to reach the selected record without scrolling a sidebar.
+History keeps search and outcome counts visible with expandable type/status
+filters. Secondary model metadata, completed tool steps, dashboard introductions,
+and card explanations use native responsive disclosures; desktop expands them.
+Warnings, approval prompts, exact filter/action scopes, failed outcomes, and remote
+image warnings stay visible. Stored/generated content is preserved in full.
+
+On Chat, keep the fixed toolbar and empty composer small enough for the
+conversation to receive most of the remaining viewport. The composer grows with
+text up to a bounded height. On Workspace, show actionable groups before a long
+methodology explanation. Generated prose should describe email outcomes instead
+of tools and model implementation details. Verify each destination with real long
+content and with synthetic non-empty drafts, flows, approvals, and reader content.

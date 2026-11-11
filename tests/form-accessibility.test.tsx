@@ -165,3 +165,36 @@ it("names provider choice and dynamic login answers and connects their errors", 
   expect(answer.labels?.[0]?.textContent).toBe("API key");
   expect(document.getElementById(answer.getAttribute("aria-describedby")!)?.textContent).toBe("Invalid key");
 });
+it("changes the compact Settings section without unmounting fields or saving settings", async () => {
+  await act(async () =>
+    root.render(
+      <SettingsClient
+        initial={{
+          artifacts: [],
+          accounts: [],
+          settings: { agent_thinking: "low", sync_scope: "inbox", sync_days: 7, sync_limit: 25 },
+          models: [],
+          providers: [],
+          folders: [],
+          namespaces: [],
+        }}
+      />,
+    ),
+  );
+  const picker = el.querySelector<HTMLSelectElement>('[aria-label="Settings section"]')!;
+  const field = el.querySelector("#agent select");
+  const writesBefore = apiJson.mock.calls.filter((call) => call[1]?.method && call[1].method !== "GET").length;
+  await act(async () => {
+    picker.value = "privacy";
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(el.querySelector("main")?.getAttribute("data-settings-section")).toBe("privacy");
+  expect(el.querySelector("#agent select")).toBe(field);
+  expect(apiJson.mock.calls.filter((call) => call[1]?.method && call[1].method !== "GET")).toHaveLength(writesBefore);
+  await act(async () => {
+    window.history.replaceState(null, "", "#artifact-42");
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  });
+  expect(picker.value).toBe("artifacts");
+  window.history.replaceState(null, "", "/");
+});

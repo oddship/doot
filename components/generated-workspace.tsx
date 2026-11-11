@@ -2,6 +2,7 @@
 import { Archive, ExternalLink, FolderInput, Trash2 } from "lucide-react";
 import { memo, type ReactNode, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
+import { ResponsiveDetails } from "@/components/responsive-details";
 import { Badge, Button, Card, cn } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
 import { navigateClient } from "@/lib/client-navigation";
@@ -172,7 +173,11 @@ function Node({ node }: { node: WorkspaceNode }) {
     return (
       <div className="node-heading">
         {node.level === 3 ? <h3>{node.text}</h3> : <h2>{node.text}</h2>}
-        {node.description && <p className="muted">{node.description}</p>}
+        {node.description && (
+          <ResponsiveDetails label="Details">
+            <p className="muted">{node.description}</p>
+          </ResponsiveDetails>
+        )}
       </div>
     );
   if (node.type === "metric")
@@ -272,7 +277,9 @@ function Node({ node }: { node: WorkspaceNode }) {
           <h3>{node.sender}</h3>
           <Badge>{node.count} messages</Badge>
         </div>
-        <p className="muted">{node.summary}</p>
+        <ResponsiveDetails label="Details">
+          <p className="muted">{node.summary}</p>
+        </ResponsiveDetails>
         <div className="action-list">
           <Button
             variant="outline"
@@ -305,7 +312,11 @@ function Node({ node }: { node: WorkspaceNode }) {
               <Badge className="search-match-count">{node.count.toLocaleString("en-IN")} matches</Badge>
             )}
           </div>
-          {node.description && <p className="muted">{node.description}</p>}
+          {node.description && (
+            <ResponsiveDetails label="Details">
+              <p className="muted">{node.description}</p>
+            </ResponsiveDetails>
+          )}
           {node.tags?.length ? (
             <div className="message-tags">
               {node.tags.map((tag) => (
@@ -349,8 +360,10 @@ function GeneratedWorkspaceView({ workspace }: { workspace: GeneratedWorkspace }
     <div className="generated-workspace">
       <header className="generated-header">
         <Badge tone="good">Prepared by Doot</Badge>
-        <h1>{workspace.title}</h1>
-        <p className="muted">{workspace.summary}</p>
+        <h1 title={workspace.title}>{workspace.title}</h1>
+        <ResponsiveDetails label="About this overview">
+          <p className="muted">{workspace.summary}</p>
+        </ResponsiveDetails>
       </header>
       <Node node={workspace.root} />
     </div>

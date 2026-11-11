@@ -1,6 +1,6 @@
 "use client";
 import { MailPlus, Save, ShieldCheck } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { FolderManager } from "@/components/folder-manager";
 import { MemoryManager } from "@/components/memory-manager";
@@ -8,10 +8,28 @@ import { ProviderAuthManager } from "@/components/provider-auth-manager";
 import { ScheduleControls } from "@/components/schedule-controls";
 import { Badge, Button, Card, Dialog, EmptyState, Input, Label, PageHeader } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
+import { settingsSection, settingsSections } from "@/lib/settings-sections";
 
 export function SettingsClient({ initial }: { initial: any }) {
   const toast = useToast();
   const formId = useId();
+  const [section, setSection] = useState("accounts");
+  useEffect(() => {
+    const sync = () => setSection(settingsSection(window.location.hash));
+    const navigation = (event: Event) => {
+      const path = (event as CustomEvent<{ path: string }>).detail?.path;
+      if (path?.startsWith("/settings")) setSection(settingsSection(new URL(path, window.location.origin).hash));
+    };
+    sync();
+    window.addEventListener("hashchange", sync);
+    window.addEventListener("popstate", sync);
+    window.addEventListener("doot-client-navigation", navigation);
+    return () => {
+      window.removeEventListener("hashchange", sync);
+      window.removeEventListener("popstate", sync);
+      window.removeEventListener("doot-client-navigation", navigation);
+    };
+  }, []);
   const [accounts, setAccounts] = useState(initial.accounts);
   const [settings, setSettings] = useState(initial.settings);
   const [models, setModels] = useState(initial.models);
@@ -84,8 +102,24 @@ export function SettingsClient({ initial }: { initial: any }) {
     });
   };
   return (
-    <main className="page">
+    <main className="page settings-page" data-settings-section={section}>
       <PageHeader title="Settings" description="Connect your accounts and choose how Doot works with your email.">
+        <select
+          className="mobile-settings-picker"
+          aria-label="Settings section"
+          value={section}
+          onChange={(event) => {
+            setSection(event.target.value);
+            window.history.replaceState(window.history.state, "", `#${event.target.value}`);
+            if (window.innerWidth <= 900) window.scrollTo({ top: 0 });
+          }}
+        >
+          {settingsSections.map(([value, label]) => (
+            <option value={value} key={value}>
+              {label}
+            </option>
+          ))}
+        </select>
         <Button tooltip="Save changes to all settings sections" onClick={saveSettings}>
           <Save size={15} />
           {notice || "Save settings"}
@@ -425,7 +459,9 @@ export function SettingsClient({ initial }: { initial: any }) {
               />
             </div>
           </Card>
-          <ScheduleControls kind="sync" />
+          <div id="schedules" className="settings-schedules">
+            <ScheduleControls kind="sync" />
+          </div>
           <Card className="settings-section" id="privacy">
             <h2>Privacy and delegation</h2>
             <div className="switch-row">

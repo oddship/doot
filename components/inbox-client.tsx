@@ -15,11 +15,13 @@ import {
   SlidersHorizontal,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmailFrame } from "@/components/email-frame";
 import { useToast } from "@/components/feedback";
 import { LocalTime } from "@/components/local-time";
+import { ResponsiveDetails } from "@/components/responsive-details";
 import { Badge, Button, Dialog, EmptyState, Input, Label, PageHeader, Skeleton, Tabs, Tooltip } from "@/components/ui";
 import { saveAgentHandoff } from "@/lib/client-agent-handoff";
 import { apiJson, errorMessage } from "@/lib/client-api";
@@ -774,20 +776,22 @@ export function InboxClient({
           ) : (
             <div className="email-document">
               <header className="email-header">
-                <div className="email-account-row">
-                  <Badge>{open.account_email}</Badge>
-                  <Badge>{open.folder}</Badge>
-                  <span>
-                    <ShieldCheck size={13} /> Read without marking seen
-                  </span>
-                </div>
+                <ResponsiveDetails label="Details" className="reader-metadata">
+                  <div className="email-account-row">
+                    <Badge>{open.account_email}</Badge>
+                    <Badge>{open.folder}</Badge>
+                    <span>
+                      <ShieldCheck size={13} /> Read without marking seen
+                    </span>
+                  </div>
+                </ResponsiveDetails>
                 <h1>{open.subject || "(no subject)"}</h1>
                 <div className="sender-block">
                   <div className="sender-avatar">{initials}</div>
                   <div>
                     <strong>{senderName}</strong>
                     <div className="muted">
-                      {senderEmail} · {open.date ? <LocalTime value={open.date} /> : ""}
+                      {senderEmail} · {open.date ? <LocalTime value={open.date} responsive /> : ""}
                     </div>
                   </div>
                 </div>
@@ -809,48 +813,56 @@ export function InboxClient({
                       value={renderMode}
                       onChange={setRenderMode}
                     />
-                    <div className="renderer-actions">
-                      <Button
-                        variant={openedSelected ? "default" : "outline"}
-                        size="sm"
-                        tooltip={openedSelected ? "Remove from Doot context" : "Allow Doot to read body"}
-                        onClick={() => toggle(open)}
-                      >
-                        <CheckSquare size={14} />
-                        {openedSelected ? "Selected for Doot" : "Select for Doot"}
-                      </Button>
-                      <Button variant="outline" size="sm" tooltip="Draft reply with email context" onClick={draftReply}>
-                        <Reply size={14} />
-                        Draft reply with Doot
-                      </Button>
-                      {detail?.has_remote_images && !detail?.remote_images_allowed && (
+                    <ResponsiveDetails label="Actions" className="reader-actions-details">
+                      <div className="renderer-actions">
+                        <Button
+                          variant={openedSelected ? "default" : "outline"}
+                          size="sm"
+                          tooltip={openedSelected ? "Remove from Doot context" : "Allow Doot to read body"}
+                          onClick={() => toggle(open)}
+                        >
+                          <CheckSquare size={14} />
+                          {openedSelected ? "Selected for Doot" : "Select for Doot"}
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          tooltip="Allow remote images once"
-                          onClick={() => fetchMessage(open, true)}
+                          tooltip="Draft reply with email context"
+                          onClick={draftReply}
                         >
-                          <ImageIcon size={14} />
-                          Load images once
+                          <Reply size={14} />
+                          Draft reply with Doot
                         </Button>
-                      )}
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        tooltip="Prepare deletion for approval"
-                        onClick={() =>
-                          void createManualProposal(
-                            "delete",
-                            [selectedMessageId(open)],
-                            undefined,
-                            `Delete opened message: ${open.subject || "(no subject)"}`,
-                          )
-                        }
-                      >
-                        <Trash2 size={14} />
-                        Delete message
-                      </Button>
-                    </div>
+                        {detail?.has_remote_images && !detail?.remote_images_allowed && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            tooltip="Allow remote images once"
+                            onClick={() => fetchMessage(open, true)}
+                          >
+                            <ImageIcon size={14} />
+                            Load images once
+                          </Button>
+                        )}
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          aria-label="Delete message"
+                          tooltip="Prepare deletion for approval"
+                          onClick={() =>
+                            void createManualProposal(
+                              "delete",
+                              [selectedMessageId(open)],
+                              undefined,
+                              `Delete opened message: ${open.subject || "(no subject)"}`,
+                            )
+                          }
+                        >
+                          <Trash2 size={14} />
+                          Delete message
+                        </Button>
+                      </div>
+                    </ResponsiveDetails>
                   </div>
                   {detail?.has_remote_images && !detail?.remote_images_allowed && (
                     <div className="remote-banner">
@@ -908,30 +920,45 @@ export function InboxClient({
           <Button
             size="sm"
             variant="outline"
+            aria-label="Unselect all"
             tooltip="Clear the entire selection"
             onClick={() => {
               updateSelected(() => []);
             }}
           >
-            Unselect all
+            <X size={16} />
+            <span>Unselect all</span>
           </Button>
           <Button
             size="sm"
             variant="outline"
+            aria-label="Move selected messages"
             tooltip="Choose a destination folder"
             disabled={moveLoading}
             onClick={() => void prepareMove()}
           >
             <FolderInput size={14} />
-            {moveLoading ? "Loading…" : "Move"}
+            <span>{moveLoading ? "Loading…" : "Move"}</span>
           </Button>
-          <Button size="sm" variant="outline" tooltip="Prepare archive for approval" onClick={() => propose("archive")}>
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label="Archive selected messages"
+            tooltip="Prepare archive for approval"
+            onClick={() => propose("archive")}
+          >
             <Archive size={14} />
-            Archive
+            <span>Archive</span>
           </Button>
-          <Button size="sm" variant="danger" tooltip="Prepare deletion for approval" onClick={() => propose("delete")}>
+          <Button
+            size="sm"
+            variant="danger"
+            aria-label="Delete selected messages"
+            tooltip="Prepare deletion for approval"
+            onClick={() => propose("delete")}
+          >
             <Trash2 size={14} />
-            Delete
+            <span>Delete</span>
           </Button>
         </div>
       )}

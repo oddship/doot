@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ConfirmDialog, useToast } from "@/components/feedback";
 import { LocalTime } from "@/components/local-time";
+import { ResponsiveDetails } from "@/components/responsive-details";
 import { ScheduleControls } from "@/components/schedule-controls";
 import { Badge, Button, Card, Dialog, Input, Label, PageHeader, Textarea, Tooltip } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
@@ -276,6 +277,24 @@ export function RulesClient({
           New flow
         </Button>
       </PageHeader>
+      {!!rules.length && (
+        <select
+          className="mobile-flow-picker"
+          aria-label="Choose flow"
+          value={activeId || ""}
+          onChange={(event) => {
+            const id = Number(event.target.value);
+            setActiveId(id);
+            replaceClientUrl(`/flows/${id}`);
+          }}
+        >
+          {rules.map((rule) => (
+            <option key={rule.id} value={rule.id}>
+              {rule.name}
+            </option>
+          ))}
+        </select>
+      )}
       <div className="rules-layout">
         <aside className="rules-sidebar">
           <div className="rules-summary">
@@ -345,29 +364,38 @@ export function RulesClient({
                         )}
                     </div>
                     <h2>{active.name}</h2>
-                    <p className="muted">{active.rationale || "No rationale provided."}</p>
+                    <ResponsiveDetails label="Why this flow">
+                      <p className="muted">{active.rationale || "No rationale provided."}</p>
+                      <p className="flow-extra-updated muted">
+                        Updated <LocalTime value={active.updated_at} />
+                      </p>
+                    </ResponsiveDetails>
                   </div>
-                  <div className="action-list">
-                    <Button variant="outline" tooltip="Open this Flow in chat" onClick={() => askAgent(active)}>
-                      <MessageSquare size={14} />
-                      Ask Doot to modify
-                    </Button>
-                    <Button variant="outline" tooltip="Change filter or action" onClick={() => openEditor(active)}>
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      tooltip={active.enabled ? "Pause attached schedule evaluations" : "Mark reviewed and schedulable"}
-                      onClick={() => toggle(active)}
-                    >
-                      {active.enabled ? <Pause size={14} /> : <Play size={14} />}
-                      {active.enabled ? "Pause flow" : "Mark active"}
-                    </Button>
-                    <Button variant="danger" tooltip="Remove Flow; keep email" onClick={() => remove(active)}>
-                      <Trash2 size={14} />
-                      Delete flow
-                    </Button>
-                  </div>
+                  <ResponsiveDetails label="Manage flow" className="flow-tools">
+                    <div className="action-list">
+                      <Button variant="outline" tooltip="Open this Flow in chat" onClick={() => askAgent(active)}>
+                        <MessageSquare size={14} />
+                        Ask Doot to modify
+                      </Button>
+                      <Button variant="outline" tooltip="Change filter or action" onClick={() => openEditor(active)}>
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        tooltip={
+                          active.enabled ? "Pause attached schedule evaluations" : "Mark reviewed and schedulable"
+                        }
+                        onClick={() => toggle(active)}
+                      >
+                        {active.enabled ? <Pause size={14} /> : <Play size={14} />}
+                        {active.enabled ? "Pause flow" : "Mark active"}
+                      </Button>
+                      <Button variant="danger" tooltip="Remove Flow; keep email" onClick={() => remove(active)}>
+                        <Trash2 size={14} />
+                        Delete flow
+                      </Button>
+                    </div>
+                  </ResponsiveDetails>
                 </div>
                 <div className="rule-definition">
                   <div>
@@ -382,7 +410,7 @@ export function RulesClient({
                     <span>Action</span>
                     <strong>{actionLabel(active)}</strong>
                   </div>
-                  <div>
+                  <div className="flow-updated">
                     <span>Updated</span>
                     <LocalTime value={active.updated_at} />
                   </div>
@@ -443,7 +471,7 @@ export function RulesClient({
                               <strong>{mail.subject || "(no subject)"}</strong>
                               <span>{mail.sender}</span>
                             </div>
-                            <LocalTime value={mail.date} />
+                            <LocalTime value={mail.date} responsive />
                           </a>
                         ))}
                       </div>

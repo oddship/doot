@@ -72,7 +72,7 @@ export function HistoryDetailView({ initialData, initialProposal }: { initialDat
   );
   const hasSummary = isJob || !isAgent || Boolean(data.workspace);
   return (
-    <main className="page">
+    <main className="page history-record-page">
       <header className="page-head">
         <div>
           <Link href="/history" className="muted">

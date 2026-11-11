@@ -234,6 +234,23 @@ export function DraftsClient({
           </Button>
         </div>
       </PageHeader>
+      {!!drafts.length && (
+        <select
+          className="mobile-draft-picker"
+          aria-label="Choose draft"
+          value={activeId}
+          onChange={(event) => {
+            const draft = drafts.find((item) => item.id === Number(event.target.value));
+            if (draft) void select(draft);
+          }}
+        >
+          {drafts.map((draft) => (
+            <option key={draft.id} value={draft.id}>
+              {draft.title || draft.content.subject || "Untitled draft"}
+            </option>
+          ))}
+        </select>
+      )}
       <div className={`drafts-layout ${drafts.length ? "" : "drafts-layout-empty"}`}>
         <Card className="draft-list">
           {drafts.length ? (

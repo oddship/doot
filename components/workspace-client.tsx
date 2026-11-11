@@ -14,6 +14,7 @@ import {
 import { useToast } from "@/components/feedback";
 import { WorkspaceBoundary } from "@/components/generated-workspace";
 import { MarkdownContent } from "@/components/markdown-content";
+import { ResponsiveDetails } from "@/components/responsive-details";
 import { Badge, Button } from "@/components/ui";
 import { consumeAgentHandoff } from "@/lib/client-agent-handoff";
 import { flushAppStateWrites, readAppState, writeAppState } from "@/lib/client-app-state";
@@ -461,9 +462,16 @@ export function WorkspaceClient({
                 {entry.reasoning !== undefined && (
                   <Reasoning text={entry.reasoning} active={running && index === entries.length - 1} />
                 )}
-                {entry.tools?.map((tool, toolIndex) => (
-                  <ToolCall key={toolIndex} {...tool} />
-                ))}
+                {!!entry.tools?.length && (
+                  <ResponsiveDetails
+                    className="tool-steps"
+                    label={`${entry.tools.length} steps · ${entry.tools.some((tool) => tool.state === "error") ? "error" : entry.tools.some((tool) => tool.state === "running") ? "working" : "complete"}`}
+                  >
+                    {entry.tools.map((tool, toolIndex) => (
+                      <ToolCall key={toolIndex} {...tool} />
+                    ))}
+                  </ResponsiveDetails>
+                )}
                 {entry.text &&
                   (entry.role === "user" ? (
                     <p style={{ whiteSpace: "pre-wrap", margin: "8px 0 0" }}>{entry.text}</p>
@@ -594,18 +602,20 @@ export function WorkspaceClient({
         <div className="pane-head">
           <div className="pane-title">
             <h1>Email assistant</h1>
-            <div className="agent-model-summary">
-              <span>Model</span>
-              <strong title={modelLabel}>{modelLabel}</strong>
-              <Button
-                variant="ghost"
-                size="sm"
-                tooltip="Change model in Settings"
-                onClick={() => navigateClient("/settings#agent")}
-              >
-                <Pencil size={12} /> Edit
-              </Button>
-            </div>
+            <ResponsiveDetails label="Model" className="agent-model-details">
+              <div className="agent-model-summary">
+                <span>Model</span>
+                <strong title={modelLabel}>{modelLabel}</strong>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  tooltip="Change model in Settings"
+                  onClick={() => navigateClient("/settings#agent")}
+                >
+                  <Pencil size={12} /> Edit
+                </Button>
+              </div>
+            </ResponsiveDetails>
           </div>
           <div className="pane-actions">
             {selectedCount > 0 && (
@@ -668,19 +678,22 @@ export function WorkspaceClient({
             <Button
               variant="outline"
               size="sm"
+              aria-label="New conversation"
               tooltip="Start a separate agent thread"
               disabled={running}
               onClick={newConversation}
             >
               <Plus size={14} />
-              New conversation
+              <span className="new-conversation-label">New conversation</span>
             </Button>
-            <Badge tone={running ? "attention" : "good"}>{running ? "Running" : "Ready"}</Badge>
+            <Badge className="agent-run-status" data-running={running} tone={running ? "attention" : "good"}>
+              {running ? "Running" : "Ready"}
+            </Badge>
           </div>
         </div>
         {conversation}
         <div className="prompt-wrap">
-          <div style={{ display: "flex", gap: 8, marginBottom: 9 }}>
+          <div className="prompt-actions">
             <Button
               tooltip="Analyze your inbox and prepare an overview"
               tooltipSide="top"

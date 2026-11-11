@@ -60,7 +60,12 @@ export function LocalTime({
     [value, display, responsive],
   );
   return (
-    <time className={className} dateTime={value} title={formatted.full} suppressHydrationWarning>
+    <time
+      className={responsive ? [className, "responsive-time"].filter(Boolean).join(" ") : className}
+      dateTime={value}
+      title={formatted.full}
+      suppressHydrationWarning
+    >
       <span className={responsive ? "timestamp-full" : undefined} suppressHydrationWarning>
         {formatted.full}
       </span>

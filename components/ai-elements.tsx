@@ -148,15 +148,31 @@ export function PromptInput({
   onSubmit: () => void;
   disabled?: boolean;
 }) {
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const resize = () => {
+      const input = form.current?.querySelector("textarea");
+      if (!input) return;
+      if (window.innerWidth > 900) {
+        input.style.removeProperty("height");
+        return;
+      }
+      input.style.height = "0px";
+      input.style.height = `${Math.min(128, Math.max(44, input.scrollHeight))}px`;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [value]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!disabled && value.trim()) onSubmit();
   };
   return (
-    <form className="prompt-box" onSubmit={submit}>
+    <form className="prompt-box" ref={form} onSubmit={submit}>
       <Textarea
         aria-label="Message Doot"
-        placeholder="Find email, catch up, or prepare a cleanup…"
+        placeholder="Ask Doot…"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {

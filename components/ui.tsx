@@ -160,7 +160,7 @@ export function PageHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <header className="page-head">
+    <header className="page-head" data-page-header>
       <div>
         <h1>{title}</h1>
         <p>{description}</p>

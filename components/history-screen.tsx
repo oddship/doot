@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { LocalTime } from "@/components/local-time";
+import { ResponsiveDetails } from "@/components/responsive-details";
 import { Badge, Card, Input, PageHeader } from "@/components/ui";
 import { apiJson } from "@/lib/client-api";
 import { navigateClient } from "@/lib/client-navigation";
@@ -50,7 +51,7 @@ export function HistoryScreen({ sessions: initialSessions }: { sessions: any[] }
     [sessions, kind, status, query],
   );
   return (
-    <main className="page">
+    <main className="page history-page">
       <PageHeader
         title="History"
         description="Track syncs, conversations, and mailbox changes. Review work that needs your approval."
@@ -80,38 +81,51 @@ export function HistoryScreen({ sessions: initialSessions }: { sessions: any[] }
           </button>
         ))}
       </div>
-      <Card className="history-filters">
-        <fieldset className="history-kind-filters">
-          <legend>History type</legend>
-          {["all", ...Object.keys(kinds)].map((value) => (
-            <button type="button" className={kind === value ? "active" : ""} key={value} onClick={() => setKind(value)}>
-              {value === "all" ? "All" : kinds[value].label}
-              <span>
-                {value === "all" ? sessions.length : sessions.filter((item) => item.history_kind === value).length}
-              </span>
-            </button>
-          ))}
-        </fieldset>
-        <div className="history-filter-fields">
-          <Input
-            aria-label="Filter history by title"
-            value={query}
-            placeholder="Filter by title"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <select aria-label="History status" value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="all">All statuses</option>
-            <option value="in_progress">In progress</option>
-            <option value="queued">Queued</option>
-            <option value="running">Running</option>
-            <option value="review">Needs review</option>
-            <option value="needs_review">Outcome uncertain</option>
-            <option value="ready">Awaiting approval</option>
-            <option value="complete">Complete</option>
-            <option value="error">Error</option>
-          </select>
-        </div>
-      </Card>
+      <div className="history-tools">
+        <Input
+          aria-label="Filter history by title"
+          value={query}
+          placeholder="Filter by title"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <ResponsiveDetails
+          label={kind !== "all" || status !== "all" ? "Filters · active" : "Filters"}
+          className="history-filter-details"
+        >
+          <Card className="history-filters">
+            <fieldset className="history-kind-filters">
+              <legend>History type</legend>
+              {["all", ...Object.keys(kinds)].map((value) => (
+                <button
+                  type="button"
+                  aria-pressed={kind === value}
+                  className={kind === value ? "active" : ""}
+                  key={value}
+                  onClick={() => setKind(value)}
+                >
+                  {value === "all" ? "All" : kinds[value].label}
+                  <span>
+                    {value === "all" ? sessions.length : sessions.filter((item) => item.history_kind === value).length}
+                  </span>
+                </button>
+              ))}
+            </fieldset>
+            <div className="history-filter-fields">
+              <select aria-label="History status" value={status} onChange={(event) => setStatus(event.target.value)}>
+                <option value="all">All statuses</option>
+                <option value="in_progress">In progress</option>
+                <option value="queued">Queued</option>
+                <option value="running">Running</option>
+                <option value="review">Needs review</option>
+                <option value="needs_review">Outcome uncertain</option>
+                <option value="ready">Awaiting approval</option>
+                <option value="complete">Complete</option>
+                <option value="error">Error</option>
+              </select>
+            </div>
+          </Card>
+        </ResponsiveDetails>
+      </div>
       <Card className="session-list">
         {visible.length ? (
           visible.map((session: any) => {
@@ -146,7 +160,7 @@ export function HistoryScreen({ sessions: initialSessions }: { sessions: any[] }
                   />
                 )}
                 {session.error && <small className="history-error-summary">{session.error}</small>}
-                <span>{session.updated_at ? <LocalTime value={session.updated_at} /> : ""}</span>
+                <span>{session.updated_at ? <LocalTime value={session.updated_at} responsive /> : ""}</span>
               </Link>
             );
           })
