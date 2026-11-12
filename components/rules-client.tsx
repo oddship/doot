@@ -90,7 +90,9 @@ export function RulesClient({
   const active = rules.find((rule) => rule.id === activeId);
   const activeFingerprint = active ? ruleActionFingerprint(active) : "";
   const preview =
-    previewResult?.ruleId === activeId && previewResult.fingerprint === activeFingerprint ? previewResult.data : null;
+    previewResult && previewResult.ruleId === activeId && previewResult.fingerprint === activeFingerprint
+      ? previewResult.data
+      : null;
   const accountEmail = (name: string) =>
     name === "all" ? "All accounts" : accounts.find((account) => account.name === name)?.email || name;
   const destinationNoun = (name: string) =>

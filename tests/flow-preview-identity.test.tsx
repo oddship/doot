@@ -1,5 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { RulesClient } from "@/components/rules-client";
 import { ScheduleControls } from "@/components/schedule-controls";
@@ -160,4 +161,12 @@ it("scopes schedules to the current Flow and ignores older schedule results", as
   await act(async () => b.resolve({ schedules: [schedule(2, "weekly")] }));
   await act(async () => a.resolve({ schedules: [schedule(1, "daily")] }));
   expect(container.querySelector(".schedule-row strong")?.textContent).toBe("Weekly");
+});
+
+it("renders empty Flows on server and client without requesting a preview", async () => {
+  const view = <RulesClient initialRules={[]} accounts={[]} folders={[]} />;
+  expect(renderToString(view)).toContain("No flows yet.");
+  await act(async () => root.render(view));
+  expect(container.textContent).toContain("No flows yet.");
+  expect(apiJson).not.toHaveBeenCalled();
 });
