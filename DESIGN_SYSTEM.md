@@ -114,6 +114,36 @@ message links. Browser verification must not sync or mutate a real mailbox.
 Use isolated fixtures for mutation and first-run tests. Production build checks
 must use a temporary database rather than the user's mailbox database.
 
+## Oatbase PR #12 adoption
+
+The vendor pin is the merged [upstream PR #12](https://github.com/oddship/oatbase/pull/12)
+revision `7db04e45afc2488ebd6f9c313fa344509fdb9594` (Oatbase v0.1.0).
+Its default `dist/oatbase.css`, MIT license, and third-party notices are byte-for-byte
+identical to the previous pin. The stylesheet SHA-256 remains
+`d7e08820f2db5296fa9eac085d6ae5e15a01238b7e30c08cdaa195cf600d3611`.
+This update adopts the reviewed integration guidance without claiming a CSS change.
+
+[Upstream React/Next guidance](https://github.com/oddship/oatbase/blob/7db04e45afc2488ebd6f9c313fa344509fdb9594/INTEGRATIONS.md)
+confirms Doot's CSS-only integration, semantic tokens, plain imports with internal
+layers, and emitted production CSS guard (`scripts/check-built-design.mjs`).
+React remains the sole owner of application interactions; no Oat runtime is loaded.
+
+Doot already implements the compact product recipe's shrinkable tracks, wrapping,
+44px touch controls, and 16px phone inputs in its shared responsive styles. Keep
+those product-specific rules rather than adding a second density scope.
+`components/responsive-details.tsx` already coordinates native `details` in React:
+server and initial client render closed, desktop expands after hydration, viewport
+collapse returns focus to summary, native toggles update state, and unmount removes
+the media listener. Doot retains its 900px breakpoint to match its workspace layout.
+Do not attach upstream's uncontrolled details enhancer to this controlled component.
+Warnings, approvals, and primary content remain outside secondary disclosures.
+
+PR #12's optional `dist/tooltip-compat.css` targets Oat-generated `.ot-tooltip`
+siblings and relies on Oat tooltip behavior. Doot instead uses button pseudo-elements
+and its own `.tooltip-root`/`.tooltip-content` adapter, with accessible names and
+focus handling. Its shared mobile styles already suppress hover tooltips on touch.
+The optional stylesheet and JavaScript are therefore not imported or vendored.
+
 ## Mobile mail density
 
 At compact widths, the app bar is one 56px row: navigation menu, current section,
