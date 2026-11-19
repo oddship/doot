@@ -19,6 +19,14 @@ export type WorkspaceEntry = {
   artifact?: any;
   rule?: any;
   readApproval?: ReadApproval;
+  reviewProgress?: {
+    review_id: string;
+    total: number;
+    bodies_read: number;
+    fully_read: number;
+    decided: number;
+    dispositions: { delete: number; retain: number; uncertain: number };
+  };
 };
 
 export type ConversationSnapshot = {
@@ -143,6 +151,8 @@ export function replayLastTurn(entries: WorkspaceEntry[], data: any): WorkspaceE
     ?.metadata?.artifact;
   const rule = [...turn].reverse().find((event: any) => ["flow_created", "flow_updated"].includes(event.event_type))
     ?.metadata?.rule;
+  const reviewProgress = [...turn].reverse().find((event: any) => event.event_type === "body_review_progress")
+    ?.metadata?.progress;
   const next = [...entries];
   let index = -1;
   for (let candidate = next.length - 1; candidate >= 0; candidate -= 1) {
@@ -157,12 +167,13 @@ export function replayLastTurn(entries: WorkspaceEntry[], data: any): WorkspaceE
   }
   next[index] = {
     ...next[index],
-    ...(text ? { text } : {}),
-    ...(reasoning ? { reasoning } : {}),
-    ...(tools.size ? { tools: [...tools.values()] } : {}),
-    ...(bodyRequest ? { readApproval: { ...bodyRequest, status: decision || "pending" } } : {}),
-    ...(artifact ? { artifact } : {}),
-    ...(rule ? { rule } : {}),
+    text: text || undefined,
+    reasoning: reasoning || undefined,
+    tools: tools.size ? [...tools.values()] : undefined,
+    readApproval: bodyRequest ? { ...bodyRequest, status: decision || "pending" } : undefined,
+    artifact,
+    rule,
+    reviewProgress,
     status: {
       status,
       detail:

@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { BODY_ACCESS_LIMITS } from "@/lib/agent-body-access";
 import { setAppState } from "@/lib/app-state";
 import { enqueueBackgroundJob, getBackgroundJob, kickBackgroundJobs } from "@/lib/background-jobs";
+import { createApprovedBodyReview } from "@/lib/body-review";
 import { db, json, now } from "@/lib/database";
 
 const ref = z.object({
@@ -16,6 +18,7 @@ const inputSchema = z.object({
     .optional(),
   text: z.string().max(50000),
   organize: z.boolean().optional(),
+  bodyReviewId: z.string().min(1).max(200).optional(),
   selected: z.array(ref).max(100).optional(),
   selectedRule: z.object({ id: z.number().int().positive() }).nullable().optional(),
   selectedDraft: z.object({ id: z.number().int().positive() }).nullable().optional(),
@@ -118,12 +121,15 @@ export function decideBodyApproval(sessionId: string, requestId: string, approve
       db.prepare(
         "INSERT INTO agent_events(session_id,event_type,content,metadata_json,created_at) VALUES(?,?,?,?,?)",
       ).run(sessionId, "body_read_decided", status, JSON.stringify({ request_id: requestId, status }), now());
+      db.prepare("INSERT INTO app_state(key,value_json) VALUES(?,?)").run(key, JSON.stringify({ status }));
+      if (approved) createApprovedBodyReview(sessionId, requestId);
       const job = approved
         ? enqueueAgentTurn(
             {
               sessionId,
-              text: `I approved body access for the ${request.messages.length} exact messages in your saved request. Read these approved messages in bounded batches and continue my task.`,
-              selected: request.messages,
+              text: `I approved read-only access to the exact ${request.messages.length}-message snapshot. Use email_review_next with review_id=${requestId} for automatic paging and email_review_record for decisions. Continue the same review without new approvals for internal chunks. Do not read every paragraph of a long newsletter unless a material ambiguity requires it; report initial-excerpt coverage separately from full-body coverage. No mailbox action is approved.`,
+              bodyReviewId: requestId,
+              selected: request.messages.length <= BODY_ACCESS_LIMITS.perRun ? request.messages : [],
               selectedSearch: request.scope
                 ? { account: request.scope.account, query: request.scope.query }
                 : undefined,
@@ -132,7 +138,7 @@ export function decideBodyApproval(sessionId: string, requestId: string, approve
           )
         : undefined;
       const decision = { status, ...(job ? { job_id: job.id } : {}) };
-      db.prepare("INSERT INTO app_state(key,value_json) VALUES(?,?)").run(key, JSON.stringify(decision));
+      db.prepare("UPDATE app_state SET value_json=? WHERE key=?").run(JSON.stringify(decision), key);
       return decision;
     })
     .immediate();

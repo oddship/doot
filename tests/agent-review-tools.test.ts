@@ -63,7 +63,7 @@ beforeEach(() => {
           password: "SECRET",
         })),
       };
-    if (args[0] === "search") return { messages: refs.slice(0, 26), total: 26 };
+    if (args[0] === "search" || args[0] === "body-snapshot") return { messages: refs.slice(0, 26), total: 26 };
     if (args[0] === "message-context") return { messages: JSON.parse(args[1]) };
     return {};
   });
@@ -171,8 +171,12 @@ describe("approved body review", () => {
       tool("email_request_body_access", current).execute("request", { scope: "current_search", reason: "Review" }),
     ).rejects.toThrow("Select an Inbox search");
     await expect(
-      tool("email_request_body_access").execute("request", { scope: "current_search", limit: 51, reason: "Review" }),
-    ).rejects.toThrow("50");
+      tool("email_request_body_access").execute("request", {
+        scope: "current_search",
+        limit: BODY_ACCESS_LIMITS.approval + 1,
+        reason: "Review",
+      }),
+    ).rejects.toThrow(String(BODY_ACCESS_LIMITS.approval));
     expect(store).not.toHaveBeenCalled();
   });
   it("permits approved reads from codemode, never unapproved or future matches", async () => {

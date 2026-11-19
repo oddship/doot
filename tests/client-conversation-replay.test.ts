@@ -4,6 +4,35 @@ import { applyConversationToolEvent, replayConversation, replayLastTurn } from "
 const event = (event_type: string, content: string, metadata = {}) => ({ event_type, content, metadata });
 
 describe("conversation history replay", () => {
+  it("clears a previous turn's answer and approval while the continuation starts", () => {
+    const [entry] = replayLastTurn(
+      [{ role: "assistant", text: "Earlier findings", readApproval: { id: "old", reason: "Read", messages: [] } }],
+      { session: { status: "running" }, events: [event("user_prompt", "Continue approved review")] },
+    );
+    expect(entry.text).toBeUndefined();
+    expect(entry.readApproval).toBeUndefined();
+    expect(entry.status?.status).toBe("running");
+  });
+  it("restores authoritative review counts separately from model prose", () => {
+    const progress = {
+      review_id: "review-1",
+      total: 157,
+      bodies_read: 100,
+      fully_read: 20,
+      decided: 90,
+      dispositions: { delete: 80, retain: 2, uncertain: 8 },
+    };
+    const [entry] = replayLastTurn([], {
+      session: { status: "complete" },
+      events: [
+        event("user_prompt", "Continue this review"),
+        event("assistant_message", "A stale model estimate"),
+        event("body_review_progress", "", { progress }),
+      ],
+    });
+    expect(entry.reviewProgress).toEqual(progress);
+    expect(entry.text).toBe("A stale model estimate");
+  });
   it("retains early live results when a delayed or duplicate start arrives", () => {
     const result = applyConversationToolEvent([], {
       type: "tool-output-available",

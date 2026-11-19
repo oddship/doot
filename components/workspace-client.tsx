@@ -11,6 +11,7 @@ import {
   TaskStatus,
   ToolCall,
 } from "@/components/ai-elements";
+import { BodyReviewProgress } from "@/components/body-review-progress";
 import { useToast } from "@/components/feedback";
 import { WorkspaceBoundary } from "@/components/generated-workspace";
 import { MarkdownContent } from "@/components/markdown-content";
@@ -392,6 +393,7 @@ export function WorkspaceClient({
             if (event.type === "data-artifact") current.artifact = event.data;
             if (event.type === "data-rule") current.rule = event.data;
             if (event.type === "data-read-approval") current.readApproval = { ...event.data, status: "pending" };
+            if (event.type === "data-review-progress") current.reviewProgress = event.data;
             if (event.type === "error") current.status = { status: "error", detail: event.errorText };
             next[next.length - 1] = current;
             return next;
@@ -422,9 +424,11 @@ export function WorkspaceClient({
       ),
     [],
   );
+  const [decidingBodyId, setDecidingBodyId] = useState<string | null>(null);
   const decideRead = useCallback(
     async (request: ReadApproval, approved: boolean) => {
       if (!session.current) return;
+      setDecidingBodyId(request.id);
       try {
         const response = await fetch(`/api/agent/sessions/${session.current}/body-approvals/${request.id}`, {
           method: "POST",
@@ -436,6 +440,8 @@ export function WorkspaceClient({
         if (approved) setRunning(true);
       } catch (error) {
         toast.error("Could not save approval", error instanceof Error ? error.message : String(error));
+      } finally {
+        setDecidingBodyId(null);
       }
     },
     [setReadApprovalStatus, toast],
@@ -508,7 +514,7 @@ export function WorkspaceClient({
                 )}
                 {entry.readApproval && (
                   <Artifact title="Message body access">
-                    <div className="body-access-request">
+                    <div className="body-access-request" data-body-request-id={entry.readApproval.id}>
                       <p>{entry.readApproval.reason}</p>
                       <p>
                         Allow Doot to read only these {entry.readApproval.messages.length} emails for analysis.
@@ -527,21 +533,25 @@ export function WorkspaceClient({
                           </>
                         )}
                       </p>
-                      <ul>
-                        {entry.readApproval.messages.map((message) => (
-                          <li key={`${message.account}:${message.folder || "INBOX"}:${message.uid}`}>
-                            <strong>{message.subject || "(no subject)"}</strong>
-                            <span>{message.sender || `${message.account} · UID ${message.uid}`}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <details open={entry.readApproval.messages.length <= 5}>
+                        <summary>{entry.readApproval.messages.length} exact emails in this request</summary>
+                        <ul>
+                          {entry.readApproval.messages.map((message) => (
+                            <li key={`${message.account}:${message.folder || "INBOX"}:${message.uid}`}>
+                              <strong>{message.subject || "(no subject)"}</strong>
+                              <span>{message.sender || `${message.account} · UID ${message.uid}`}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
                       {entry.readApproval.status === "pending" || !entry.readApproval.status ? (
                         <div className="body-access-actions">
                           <Button
                             size="sm"
                             variant="outline"
                             tooltip="Continue without reading bodies"
-                            disabled={running}
+                            aria-label={`Decline reading ${entry.readApproval.messages.length} emails: ${entry.readApproval.reason}`}
+                            disabled={running || Boolean(decidingBodyId)}
                             onClick={() => void decideRead(entry.readApproval!, false)}
                           >
                             <X size={14} /> Not now
@@ -549,7 +559,9 @@ export function WorkspaceClient({
                           <Button
                             size="sm"
                             tooltip="Allow read-only analysis of only these email contents"
-                            disabled={running}
+                            aria-label={`Approve reading ${entry.readApproval.messages.length} emails: ${entry.readApproval.reason}`}
+                            aria-busy={decidingBodyId === entry.readApproval.id}
+                            disabled={running || Boolean(decidingBodyId)}
                             onClick={() => approveRead(entry.readApproval!)}
                           >
                             <Eye size={14} /> Approve and continue
@@ -566,6 +578,11 @@ export function WorkspaceClient({
                     </div>
                   </Artifact>
                 )}
+                {entry.reviewProgress && (
+                  <Artifact title="Email review progress">
+                    <BodyReviewProgress progress={entry.reviewProgress} />
+                  </Artifact>
+                )}
               </Message>
             )}
             {entry.status && <AgentTaskStatus {...entry.status} />}
@@ -573,7 +590,7 @@ export function WorkspaceClient({
         ))}
       </Conversation>
     ),
-    [entries, running, decideRead, approveRead],
+    [entries, running, decidingBodyId, decideRead, approveRead],
   );
   const modelLabel = agentModel?.provider
     ? `${agentModel.provider} · ${agentModel.name || agentModel.id}`

@@ -236,6 +236,20 @@
     display: grid;
     gap: 6px;
   }
+  .body-review-progress {
+    display: grid;
+    gap: 8px;
+  }
+  .body-review-progress progress {
+    width: 100%;
+    accent-color: var(--primary);
+  }
+  .body-review-progress p {
+    margin: 0;
+  }
+  .body-review-progress small {
+    color: var(--text-muted);
+  }
   .body-access-request li {
     display: grid;
     gap: 1px;

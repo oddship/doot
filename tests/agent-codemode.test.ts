@@ -145,6 +145,13 @@ describe("read-only codemode", () => {
     expect(source).toContain(`"max_output_tokens":${CODEMODE_LIMITS.outputTokens}`);
   });
 
+  it("keeps concrete structured output contracts for review tools", () => {
+    const outputSchema = { type: "object", properties: { total: { type: "integer" } } };
+    expect(withCodemodePolicy({ name: "email_review_progress", outputSchema }).outputSchema).toEqual(outputSchema);
+    expect(withCodemodePolicy({ name: "email_review_next" }).exposure).toBe("direct");
+    expect(withCodemodePolicy({ name: "email_review_record" }).exposure).toBe("model-only");
+  });
+
   it("executes the real Pi sandbox with structured header results", async () => {
     const { text, execute } = await runScript(
       "const result = await tools.email_search({}); return { count: result.total };",

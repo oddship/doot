@@ -83,6 +83,41 @@ it("continues conversations and preserves completed workflow state when a comman
     expect(db.prepare("SELECT COUNT(*) count FROM agent_views WHERE session_id=?").get(workflowId)).toEqual({
       count: 1,
     });
+
+    faux.setResponses([fauxAssistantMessage([fauxText("Read-only review completed; no mailbox changes.")])]);
+    const reviewId = await runAgent(
+      { text: "Recommend inbox cleanup candidates; read-only, no flows or proposals" },
+      () => {},
+    );
+    expect(db.prepare("SELECT status,error FROM agent_sessions WHERE id=?").get(reviewId)).toEqual({
+      status: "complete",
+      error: null,
+    });
+    expect(db.prepare("SELECT COUNT(*) count FROM actions").get()).toEqual({ count: 0 });
+
+    db.prepare(
+      "INSERT INTO messages(account,account_email,uid,folder,subject,present,fetched_at) VALUES('synthetic','test@example.com','1','INBOX','Synthetic request',1,'now')",
+    ).run();
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("email_request_body_access", {
+            messages: [{ account: "synthetic", folder: "INBOX", uid: "1" }],
+            reason: "Inspect the exact synthetic body",
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([fauxText("Waiting for body approval before preparing the requested Flow.")]),
+    ]);
+    const waitingId = await runAgent({ text: "Suggest a Flow for these messages" }, () => {});
+    expect(db.prepare("SELECT status,error FROM agent_sessions WHERE id=?").get(waitingId)).toEqual({
+      status: "complete",
+      error: null,
+    });
+    expect(db.prepare("SELECT body_fetched FROM messages WHERE account='synthetic'").get()).toEqual({
+      body_fetched: 0,
+    });
   } finally {
     await closeAgentRuntime();
     db.close();

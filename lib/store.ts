@@ -1,3 +1,4 @@
+import { BODY_ACCESS_LIMITS } from "@/lib/agent-body-access";
 import { approveFolderMutation, approveProposal, getBackgroundJob } from "@/lib/background-jobs";
 import {
   accountByName,
@@ -410,6 +411,21 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
               .get(account) || null;
       break;
     }
+    case "body-snapshot":
+      result = db.transaction(() =>
+        queryMessages(
+          {
+            account: option(rest, "--account", "all"),
+            query: option(rest, "--query"),
+            limit: Math.max(
+              1,
+              Math.min(numberOption(rest, "--limit", BODY_ACCESS_LIMITS.approval), BODY_ACCESS_LIMITS.approval),
+            ),
+          },
+          BODY_ACCESS_LIMITS.approval,
+        ),
+      )();
+      break;
     case "search":
       result = {
         ...queryMessages({
@@ -468,7 +484,8 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
     }
     case "message-context": {
       const items = parseValue<Array<{ account: string; uid: string; folder?: string }>>(rest[0]);
-      if (!Array.isArray(items) || items.length > 100) throw new Error("invalid selected message context");
+      if (!Array.isArray(items) || items.length > BODY_ACCESS_LIMITS.approval)
+        throw new Error("invalid selected message context");
       const findExact = db.prepare(
         "SELECT account,account_email,uid,folder,sender,subject,date FROM messages WHERE account=? AND folder=? AND uid=?",
       );

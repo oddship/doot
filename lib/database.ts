@@ -438,20 +438,23 @@ export function messageWhere(input: {
   return { where, values };
 }
 
-export function queryMessages(input: {
-  account?: string;
-  query?: string;
-  sender?: string;
-  domain?: string;
-  days?: number;
-  offset?: number;
-  limit?: number;
-  focusUid?: string;
-  focusFolder?: string;
-  includeBodyFetched?: boolean;
-}) {
+export function queryMessages(
+  input: {
+    account?: string;
+    query?: string;
+    sender?: string;
+    domain?: string;
+    days?: number;
+    offset?: number;
+    limit?: number;
+    focusUid?: string;
+    focusFolder?: string;
+    includeBodyFetched?: boolean;
+  },
+  maximumLimit = 100,
+) {
   const { where, values } = messageWhere(input);
-  const limit = Math.max(1, Math.min(input.limit || 25, 100));
+  const limit = Math.max(1, Math.min(input.limit || 25, maximumLimit));
   let offset = Math.max(0, input.offset || 0);
   let focusFound = false;
   if (input.focusUid && /^\d+$/.test(input.focusUid)) {

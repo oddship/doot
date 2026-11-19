@@ -72,6 +72,28 @@ it("persists denial without scheduling body reads", async () => {
   expect(fake.run).not.toHaveBeenCalled();
 });
 
+it("approves a 157-message immutable review once without overloading legacy selection", async () => {
+  const id = "large-review-session";
+  const request = {
+    id: "large-request",
+    messages: Array.from({ length: 157 }, (_, index) => ({ account: "fake", folder: "INBOX", uid: String(index + 1) })),
+  };
+  db.prepare(
+    "INSERT INTO agent_sessions(id,title,started_at,updated_at) VALUES(?,'Synthetic large review','now','now')",
+  ).run(id);
+  db.prepare(
+    "INSERT INTO agent_events(session_id,event_type,metadata_json,created_at) VALUES(?,'body_read_requested',?,'now')",
+  ).run(id, JSON.stringify({ request }));
+  decideBodyApproval(id, request.id, true);
+  await kickBackgroundJobs();
+  expect(fake.run).toHaveBeenCalledTimes(1);
+  expect(fake.run.mock.calls[0][0]).toMatchObject({ bodyReviewId: request.id, selected: [] });
+  const { reviewProgress } = await import("@/lib/body-review");
+  expect(reviewProgress(id, request.id)).toMatchObject({ total: 157, unread: 157, bodies_read: 0 });
+  expect(decideBodyApproval(id, request.id, true).status).toBe("approved");
+  expect(fake.run).toHaveBeenCalledTimes(1);
+});
+
 it("cancels a saved turn before it starts, without executing it", async () => {
   const job = enqueueAgentTurn({ text: "Synthetic cancellation" }, "cancel-command");
   expect(cancelSavedAgentJobs(job.source.session_id)).toBe(1);

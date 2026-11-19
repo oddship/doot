@@ -2,7 +2,7 @@ import sanitizeHtml from "sanitize-html";
 import { sanitizeMessageHtml } from "@/lib/mail";
 
 export type BodyRef = { account: string; folder?: string; uid: string };
-export const BODY_ACCESS_LIMITS = { approval: 50, batch: 5, perRun: 50, textChars: 6_000 };
+export const BODY_ACCESS_LIMITS = { approval: 1000, batch: 5, perRun: 50, textChars: 6_000 };
 export const bodyRefKey = (ref: BodyRef) => JSON.stringify([ref.account, ref.folder || "", ref.uid]);
 
 export function approvedBodyBatch(
@@ -38,9 +38,11 @@ export function approvedBodyBatch(
   };
 }
 
-export function compactMessageBody(message: any, bodyOffset = 0) {
+export function compactMessageBody(message: any, bodyOffset = 0, textChars = BODY_ACCESS_LIMITS.textChars) {
   if (!Number.isSafeInteger(bodyOffset) || bodyOffset < 0)
     throw new Error("Body excerpt offset must be a non-negative integer");
+  if (!Number.isSafeInteger(textChars) || textChars < 1 || textChars > BODY_ACCESS_LIMITS.textChars)
+    throw new Error("Invalid body excerpt size");
   const text = String(
     message.body_text ||
       sanitizeHtml(sanitizeMessageHtml(message.body_html || ""), { allowedTags: [], allowedAttributes: {} }),
@@ -52,11 +54,14 @@ export function compactMessageBody(message: any, bodyOffset = 0) {
     sender: message.sender,
     subject: message.subject,
     date: message.date,
-    body_text: text.slice(bodyOffset, bodyOffset + BODY_ACCESS_LIMITS.textChars),
+    body_text: text.slice(bodyOffset, bodyOffset + textChars),
     body_offset: bodyOffset,
-    body_next_offset:
-      bodyOffset + BODY_ACCESS_LIMITS.textChars < text.length ? bodyOffset + BODY_ACCESS_LIMITS.textChars : null,
-    body_truncated: bodyOffset > 0 || text.length > BODY_ACCESS_LIMITS.textChars,
+    body_next_offset: bodyOffset + textChars < text.length ? bodyOffset + textChars : null,
+    body_range_end: Math.min(text.length, bodyOffset + textChars),
+    body_has_more: bodyOffset + textChars < text.length,
+    body_is_partial: bodyOffset > 0 || text.length > textChars,
+    // Compatibility: this describes an excerpt, not whether another page exists.
+    body_truncated: bodyOffset > 0 || text.length > textChars,
     body_chars_total: text.length,
     attachments: (Array.isArray(message.attachments) ? message.attachments : [])
       .slice(0, 20)

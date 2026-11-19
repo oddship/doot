@@ -20,7 +20,7 @@ Doot is a self-hosted email workspace for reading, finding, organizing, and clea
 - Searches the complete cache with SQLite FTS5 and fetches bodies only when opened via `BODY.PEEK[]`.
 - Gives the agent paginated search, aggregation, selected-message, proposal, Flow, artifact, and bounded memory tools.
 - Batches header analysis, Flow inspection, and browser-approved body excerpts in Pi's read-only sandboxed codemode; scripts cannot create proposals, edit Flows or drafts, mutate memory, or access mailbox writes.
-- Approves up to 50 bodies as an exact snapshot of the current Inbox search, then reviews them in bounded batches. The agent can refine selected or conversation-created Flows without duplicating them.
+- Approves up to 1,000 bodies as an exact snapshot, then reviews them in bounded batches with durable coverage and per-message decisions. The agent can refine selected or conversation-created Flows without duplicating them.
 - Prepares structured local drafts with Doot, then saves them to the account's advertised IMAP Drafts folder only after explicit confirmation.
 - Streams agent reasoning and tool progress into a persistent workspace that survives navigation.
 - Renders agent responses as safe GitHub-flavored Markdown without raw HTML or remote images.
@@ -41,6 +41,8 @@ npm run dev
 Open <http://127.0.0.1:8765>. In Settings, add an IMAP email account, choose the folders to sync, and sync it to browse and search your email. To use the assistant, also connect a model provider and select a model. Doot stores provider tokens, account credentials, and cached mail in the local SQLite database configured by `DOOT_DATABASE_PATH`; protect that file and never commit it.
 
 Settings → Mailbox proposals controls the maximum emails in each review proposal. The default is 100; increase it for larger cleanup batches (up to 10,000). The agent and proposal validation use this setting, and every mailbox change still requires browser approval.
+
+Body-review approval is separate from mailbox approval. Its immutable snapshot excludes new arrivals and survives subsequent turns. Doot chooses the next unread excerpts (up to five per call), saves coverage and judgments, and shows authoritative progress. Short excerpts are sufficient for clear newsletters; targeted full-body paging resolves important ambiguities. “Emails opened for analysis” and “complete bodies supplied” are reported separately. Saved deletion recommendations never execute mailbox changes. The legacy selected-message reader retains its 50-body per-run limit; managed reviews continue within the approved snapshot without another approval. Read-only reviews can finish with findings without creating a Flow or proposal.
 
 For day-to-day use, build once and run the production server:
 
