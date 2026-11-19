@@ -389,6 +389,7 @@ function safeFtsQuery(value: unknown) {
 
 export function messageWhere(input: {
   account?: string;
+  folder?: string;
   query?: string;
   sender?: string;
   domain?: string;
@@ -399,6 +400,10 @@ export function messageWhere(input: {
   if (input.account && input.account !== "all") {
     clauses.push("messages.account=?");
     values.push(input.account);
+  }
+  if (input.folder) {
+    clauses.push("messages.folder=?");
+    values.push(input.folder);
   }
   if (input.query) {
     const parsed = parseSearchQuery(input.query);
@@ -441,6 +446,7 @@ export function messageWhere(input: {
 export function queryMessages(
   input: {
     account?: string;
+    folder?: string;
     query?: string;
     sender?: string;
     domain?: string;
@@ -454,13 +460,16 @@ export function queryMessages(
   maximumLimit = 100,
 ) {
   const { where, values } = messageWhere(input);
+  // A canonical representative may be in a different Gmail label. An exact
+  // folder request must use that folder's own UID namespace and cached rows.
+  const source = input.folder ? "messages" : "canonical_messages";
   const limit = Math.max(1, Math.min(input.limit || 25, maximumLimit));
   let offset = Math.max(0, input.offset || 0);
   let focusFound = false;
   if (input.focusUid && /^\d+$/.test(input.focusUid)) {
     const focused = db
       .prepare(
-        `SELECT date_ts,CAST(uid AS INTEGER) uid_number FROM canonical_messages messages${where} AND messages.uid=?
+        `SELECT date_ts,CAST(uid AS INTEGER) uid_number FROM ${source} messages${where} AND messages.uid=?
         ${input.focusFolder ? "AND messages.folder=?" : ""} LIMIT 1`,
       )
       .get(...values, input.focusUid, ...(input.focusFolder ? [input.focusFolder] : [])) as
@@ -472,7 +481,7 @@ export function queryMessages(
         (
           db
             .prepare(
-              `SELECT COUNT(*) count FROM canonical_messages messages${where} AND
+              `SELECT COUNT(*) count FROM ${source} messages${where} AND
               (messages.date_ts>? OR (messages.date_ts=? AND CAST(messages.uid AS INTEGER)>?))`,
             )
             .get(...values, focused.date_ts, focused.date_ts, focused.uid_number) as { count: number }
@@ -484,11 +493,11 @@ export function queryMessages(
   const fields = `account,account_email,uid,folder,provider_id,sender,subject,date,date_ts,unread${input.includeBodyFetched ? ",body_fetched" : ""}`;
   const messages = db
     .prepare(
-      `SELECT ${fields} FROM canonical_messages messages${where} ORDER BY date_ts DESC,CAST(uid AS INTEGER) DESC LIMIT ? OFFSET ?`,
+      `SELECT ${fields} FROM ${source} messages${where} ORDER BY date_ts DESC,CAST(uid AS INTEGER) DESC LIMIT ? OFFSET ?`,
     )
     .all(...values, limit, offset);
   const total = Number(
-    (db.prepare(`SELECT COUNT(*) count FROM canonical_messages messages${where}`).get(...values) as any).count,
+    (db.prepare(`SELECT COUNT(*) count FROM ${source} messages${where}`).get(...values) as any).count,
   );
   return {
     messages,

@@ -40,6 +40,8 @@ export const handleMailRoutes: ApiRouteHandler = async ({ request, path, key, me
         "list",
         "--account",
         url.searchParams.get("account") || "all",
+        "--folder",
+        url.searchParams.get("folder") || "",
         "--query",
         url.searchParams.get("query") || "",
         "--offset",

@@ -22,6 +22,7 @@
     "start": "NODE_ENV=production node server.mjs",
     "test": "vitest run",
     "test:ui": "node scripts/ui-audit.mjs",
+    "api": "node scripts/doot-api.mjs",
     "bench:imap-reads": "node scripts/benchmark-body-reads.mjs",
     "prototype:durable": "node scripts/prototype-durable-recovery.mjs",
     "test:durable": "vitest run tests/agent-durable.test.ts tests/agent-durable-runtime.test.ts tests/agent-durable-recovery.test.ts tests/durable-mailbox.test.ts tests/durable-mailbox-wire.test.ts",

@@ -8,6 +8,10 @@ async function handler(request: Request, context: { params: Promise<{ path: stri
   try {
     assertTrustedRequest(request);
     const { path } = await context.params;
+    if (path[0] === "v1") {
+      const { handleVersionedApi } = await import("@/lib/api/v1");
+      return handleVersionedApi(request, path.slice(1), API_ROUTE_HANDLERS);
+    }
     const route = { request, path, key: path.join("/"), method: request.method, url: new URL(request.url) };
     for (const handle of API_ROUTE_HANDLERS) {
       const response = await handle(route);

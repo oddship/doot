@@ -391,8 +391,10 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
     }
     case "list": {
       const account = option(rest, "--account", "all");
+      const folder = option(rest, "--folder");
       result = queryMessages({
         account,
+        folder: folder || undefined,
         query: option(rest, "--query"),
         offset: numberOption(rest, "--offset", 0),
         limit: numberOption(rest, "--limit", 20),
@@ -406,9 +408,10 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
           : db
               .prepare(
                 `SELECT SUM(mailbox_messages) messages,SUM(mailbox_unseen) unseen,MAX(last_sync) last_sync
-                FROM sync_state WHERE account=?`,
+                FROM sync_state WHERE account=? AND (?='' OR folder=?)`,
               )
-              .get(account) || null;
+              .get(account, folder, folder) || null;
+      result.scope = { account, folder: folder || null, source: folder ? "folder-cache" : "canonical-cache" };
       break;
     }
     case "body-snapshot":
@@ -430,6 +433,7 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       result = {
         ...queryMessages({
           account: option(rest, "--account", "all"),
+          folder: option(rest, "--folder") || undefined,
           query: option(rest, "--query"),
           sender: option(rest, "--sender"),
           domain: option(rest, "--domain"),
@@ -563,6 +567,15 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
           .map(({ content_json: _discard, ...row }) => row),
       };
       break;
+    case "artifact-get": {
+      const id = Number(required(rest[0], "artifact id is required"));
+      if (!Number.isSafeInteger(id) || id < 1) throw new Error("invalid artifact id");
+      const row = db.prepare("SELECT * FROM agent_artifacts WHERE id=?").get(id) as any;
+      if (!row) throw new Error("artifact not found");
+      const { content_json, ...metadata } = row;
+      result = { ...metadata, content: json(content_json, null) };
+      break;
+    }
     case "memory-set": {
       const [namespace, key] = [required(rest[0], "namespace is required"), required(rest[1], "key is required")];
       validateMemory(namespace, key);

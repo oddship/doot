@@ -13,6 +13,8 @@ export const CODEMODE_READ_TOOLS = new Set([
   "email_review_progress",
   "email_list_flows",
   "email_get_flow",
+  "email_list_artifacts",
+  "email_get_artifact",
   "memory_namespaces",
   "memory_get",
   "memory_list",

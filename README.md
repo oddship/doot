@@ -56,6 +56,12 @@ compilation from page navigation. On phones, switch between Chat and Workspace
 at the top of the workspace; opening a message shows the reader with a Back to
 inbox control that keeps the current search and cached message.
 
+For browser-free operation, use the [HTTP API](docs/04-reference/03-http-api.md):
+`GET /api/v1` discovers operations and `/api/v1/openapi.json` describes the
+contract. `npm run api -- GET /health` runs the included JSON client. Chat turns,
+body-access decisions, saved review notes, exact proposals, explicit approvals,
+durable jobs and bounded event polling are available without browser automation.
+
 With Nix and direnv:
 
 ```bash

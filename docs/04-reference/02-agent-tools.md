@@ -2,6 +2,11 @@
 
 The agent operates on bounded structured results rather than a preloaded mailbox dump.
 
+Browser-free clients can use the [HTTP API](03-http-api.md), including asynchronous
+chat, exact approvals, jobs and review ledgers. `email_list_artifacts` and
+`email_get_artifact` let Doot recover saved scopes without reconstructing UIDs.
+`email_search` accepts an explicit `folder`; use `INBOX` for Inbox-only counts.
+
 - `email_dashboard_snapshot` — compact totals, accounts, recent headers, proposals, and latest workspace.
 - `email_facets` — counts grouped by account, age, sender, and domain.
 - `email_search` — targeted FTS5/field search with explicit limit, offset, totals, and next offset.
