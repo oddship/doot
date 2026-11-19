@@ -71,6 +71,40 @@ async function withMailbox<T>(
   }
 }
 
+// One serial, approved job owns this scope. A failed write is never retried or
+// reconnected here; the durable worker stops and closes the scope for review.
+export function createMailboxActionSession() {
+  const clients = new Map<string, ImapFlow>();
+  return {
+    async run<T>(account: StoredAccount, folder: string, callback: (client: ImapFlow) => Promise<T>) {
+      const key = JSON.stringify([account.name, folder]);
+      let client = clients.get(key);
+      if (!client) {
+        client = clientFor(account);
+        clients.set(key, client);
+        await client.connect();
+      }
+      const lock = await client.getMailboxLock(folder, { readOnly: false, description: "Confirmed mailbox action" });
+      try {
+        return await callback(client);
+      } finally {
+        lock.release();
+      }
+    },
+    async close() {
+      for (const client of clients.values()) {
+        try {
+          await client.logout();
+        } catch {
+          client.close();
+        }
+      }
+      clients.clear();
+    },
+  };
+}
+type MailboxActionSession = ReturnType<typeof createMailboxActionSession>;
+
 const READ_SESSION_IDLE_MS = 10 * 60_000;
 const MAX_READ_SESSIONS = 12;
 
@@ -1017,6 +1051,7 @@ export async function applyMailboxAction(
   action: MailAction,
   items: Array<{ account: string; uid: string; source_folder: string; folder?: string; uid_validity?: string }>,
   markRead = action === "mark_read",
+  session?: MailboxActionSession,
 ) {
   normalizeMailActions(undefined, action);
   const marked: typeof items = [];
@@ -1036,7 +1071,7 @@ export async function applyMailboxAction(
       continue;
     }
     try {
-      await withMailbox(account, sourceFolder, false, async (client) => {
+      const execute = async (client: ImapFlow) => {
         const provider = providerForConnection(client.capabilities, account.host);
         const sourceSpecialUse = (
           db
@@ -1063,15 +1098,12 @@ export async function applyMailboxAction(
           throw new Error("Mailbox UID validity changed; sync before applying actions");
         // UID STORE can succeed even when no matching message exists. Confirm exact
         // source membership before claiming a write as completed; never fetch bodies.
-        const found = new Set(
-          (
-            await client.fetchAll(
-              accountItems.map((item) => Number(item.uid)),
-              { uid: true },
-              { uid: true },
-            )
-          ).map((item) => String(item.uid)),
+        const sourceMetadata = await client.fetchAll(
+          accountItems.map((item) => Number(item.uid)),
+          { uid: true, ...(provider === "gmail" && action === "move" ? { flags: true } : {}) },
+          { uid: true },
         );
+        const found = new Set(sourceMetadata.map((item) => String(item.uid)));
         if (accountItems.some((item) => !found.has(item.uid)))
           throw new Error("A proposed message is no longer in its source folder; recreate the proposal");
         if (markRead) {
@@ -1140,7 +1172,43 @@ export async function applyMailboxAction(
               errors.push({ item, error: "invalid destination folder" });
               continue;
             }
-            if (provider === "gmail") {
+            let verification = {};
+            if (provider === "gmail" && !sourceIsAllMail) {
+              if (!client.capabilities.has("MOVE"))
+                throw new Error("Verified Gmail filing requires native MOVE; no copy/delete fallback was attempted");
+              const before = sourceMetadata.find((message) => String(message.uid) === item.uid);
+              if (!(before?.flags instanceof Set) || !before.emailId)
+                throw new Error("Cannot verify Gmail move without source identity and flags");
+              const moved = await client.messageMove(Number(item.uid), item.folder, { uid: true });
+              requireApplied(moved, "move");
+              const remaining = await client.fetchAll([Number(item.uid)], { uid: true }, { uid: true });
+              if (remaining.length)
+                throw new Error(
+                  "Move acknowledged but message remains in source; outcome may be unknown. Reconcile before retrying",
+                );
+              const destinationUid = moved && moved.uidMap?.get(Number(item.uid));
+              if (!destinationUid || !moved || !moved.uidValidity)
+                throw new Error("Move has no destination identity; outcome may be unknown. Reconcile before retrying");
+              const destination = await client.mailboxOpen(item.folder, { readOnly: true });
+              if (String(destination.uidValidity) !== String(moved.uidValidity))
+                throw new Error("Move destination identity changed; outcome may be unknown. Reconcile before retrying");
+              const copies = await client.fetchAll([destinationUid], { uid: true, flags: true }, { uid: true });
+              const copy = copies.find((message) => message.uid === destinationUid);
+              if (!copy || copy.emailId !== before.emailId || !(copy.flags instanceof Set))
+                throw new Error(
+                  "Moved message not verified at destination; outcome may be unknown. Reconcile before retrying",
+                );
+              if (copy.flags.has("\\Seen") !== (markRead || before.flags.has("\\Seen")))
+                throw new Error("Move changed unread state; reconcile before retrying");
+              verification = {
+                source_absence_verified: true,
+                destination_verified: true,
+                unread_state_verified: true,
+                destination_uid: String(destinationUid),
+                destination_uid_validity: String(destination.uidValidity),
+              };
+              await client.mailboxOpen(sourceFolder, { readOnly: false });
+            } else if (provider === "gmail") {
               requireApplied(
                 await client.messageFlagsAdd(Number(item.uid), [item.folder], {
                   uid: true,
@@ -1149,15 +1217,6 @@ export async function applyMailboxAction(
                 }),
                 "label",
               );
-              if (!sourceIsAllMail)
-                requireApplied(
-                  await client.messageFlagsRemove(
-                    Number(item.uid),
-                    [sourceFolder.toLowerCase() === "inbox" ? "\\Inbox" : sourceFolder],
-                    { uid: true, useLabels: true, silent: true },
-                  ),
-                  "move",
-                );
             } else requireApplied(await client.messageMove(Number(item.uid), item.folder, { uid: true }), "move");
             results.push({
               account: accountName,
@@ -1165,10 +1224,13 @@ export async function applyMailboxAction(
               source_folder: sourceFolder,
               cache_hidden: !sourceIsAllMail,
               ok: true,
+              ...verification,
             });
           }
         }
-      });
+      };
+      if (session) await session.run(account, sourceFolder, execute);
+      else await withMailbox(account, sourceFolder, false, execute);
     } catch (error: any) {
       errors.push(...accountItems.map((item) => ({ item, error: String(error?.message || error) })));
     }
@@ -1234,9 +1296,13 @@ export async function applyMailboxAction(
   return { status: errors.length ? "partial_failure" : "applied", results, errors };
 }
 
-export async function applyMailboxActions(actions: MailAction[], items: Parameters<typeof applyMailboxAction>[1]) {
+export async function applyMailboxActions(
+  actions: MailAction[],
+  items: Parameters<typeof applyMailboxAction>[1],
+  session?: MailboxActionSession,
+) {
   const plan = normalizeMailActions(actions);
-  const applied = await applyMailboxAction(plan[plan.length - 1], items, plan.includes("mark_read"));
+  const applied = await applyMailboxAction(plan[plan.length - 1], items, plan.includes("mark_read"), session);
   return {
     ...applied,
     actions: plan,

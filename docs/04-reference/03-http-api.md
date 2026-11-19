@@ -123,6 +123,17 @@ durable job. Repeated approval returns that proposal's existing job, including
 its uncertain/failed state; it never silently retries it. Create a recovery scope
 only after reconciling which exact authorized references still need action.
 
+For Gmail moves from Inbox or a custom label, Doot requires native IMAP MOVE.
+Before recording success it verifies source absence, destination UID validity and
+stable message identity, and the expected read/unread state without reading a
+body. Successful per-message receipts include `source_absence_verified`,
+`destination_verified`, `unread_state_verified`, `destination_uid`, and
+`destination_uid_validity`. These checks describe the operation time, not a later
+live mailbox inspection. Filing from All Mail remains label-only. A durable
+mailbox job reuses its own connections while retaining separate per-message
+claims and receipts, and closes them when the job ends; it never reconnects to
+retry an unconfirmed write.
+
 `GET /proposals/{id}/verification?offset=0&limit=20` compares exact saved references
 with current cached presence and mailbox-identity checkpoints, and includes the
 execution job/receipts. It labels missing cache entries or changed UIDVALIDITY

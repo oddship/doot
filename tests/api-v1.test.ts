@@ -14,6 +14,7 @@ vi.mock("@/lib/agent-runtime", () => ({
   updateRuntimeKey: vi.fn(),
 }));
 vi.mock("@/lib/imap", () => ({
+  createMailboxActionSession: () => ({ close: vi.fn(async () => {}) }),
   applyMailboxActions: fake.apply,
   readMessage: fake.read,
   readMessages: fake.read,

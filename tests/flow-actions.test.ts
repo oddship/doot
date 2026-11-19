@@ -6,7 +6,10 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mailActionLabel, normalizeMailActions, ruleActionFingerprint } from "@/lib/mail-actions";
 
 const { apply } = vi.hoisted(() => ({ apply: vi.fn() }));
-vi.mock("@/lib/imap", () => ({ applyMailboxActions: apply }));
+vi.mock("@/lib/imap", () => ({
+  applyMailboxActions: apply,
+  createMailboxActionSession: () => ({ close: vi.fn(async () => {}) }),
+}));
 const directory = mkdtempSync(path.join(tmpdir(), "doot-flow-actions-"));
 process.env.DOOT_DATABASE_PATH = path.join(directory, "cache.sqlite3");
 const { db } = await import("@/lib/database");

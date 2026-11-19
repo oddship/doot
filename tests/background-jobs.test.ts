@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const fake = vi.hoisted(() => ({ apply: vi.fn(), append: vi.fn(), folder: vi.fn(), store: vi.fn() }));
+const fake = vi.hoisted(() => ({ apply: vi.fn(), append: vi.fn(), folder: vi.fn(), store: vi.fn(), close: vi.fn() }));
 vi.mock("@/lib/store", () => ({ store: fake.store, emitBackground: vi.fn() }));
 vi.mock("@/lib/imap", () => ({
   applyMailboxActions: fake.apply,
   appendImapDraft: fake.append,
   mutateAccountFolder: fake.folder,
+  createMailboxActionSession: () => ({ close: fake.close }),
 }));
 const directory = mkdtempSync(path.join(tmpdir(), "doot-jobs-"));
 process.env.DOOT_DATABASE_PATH = path.join(directory, "db.sqlite");
@@ -26,6 +27,7 @@ const {
   enqueueBackgroundJob,
 } = await import("@/lib/background-jobs");
 beforeEach(() => {
+  fake.close.mockReset().mockResolvedValue(undefined);
   fake.store.mockReset().mockResolvedValue({ accounts: [], errors: [] });
   fake.folder.mockReset();
   fake.append.mockReset();
@@ -53,6 +55,15 @@ function proposal() {
   );
 }
 describe("app-owned approved mailbox jobs", () => {
+  it.each([true, false])("closes its job-owned connection scope after success=%s", async (success) => {
+    if (!success)
+      fake.apply.mockResolvedValue({ status: "partial_failure", results: [], errors: [{ error: "uncertain" }] });
+    const saved = approveProposal(proposal());
+    await kickBackgroundJobs();
+    expect(getBackgroundJob(saved.id).status).toBe(success ? "complete" : "needs_review");
+    expect(fake.close).toHaveBeenCalledOnce();
+    expect(fake.apply.mock.calls.every((call) => call[2].close === fake.close)).toBe(true);
+  });
   it("atomically queues a schedule occurrence and cannot duplicate its proposal after restart", async () => {
     const ruleId = Number(
       db

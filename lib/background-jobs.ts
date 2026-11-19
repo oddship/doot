@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { db, json, now } from "@/lib/database";
 import { startHistory } from "@/lib/history";
-import { appendImapDraft, applyMailboxActions, mutateAccountFolder } from "@/lib/imap";
+import { appendImapDraft, applyMailboxActions, createMailboxActionSession, mutateAccountFolder } from "@/lib/imap";
 import { validateMailboxPath } from "@/lib/imap-folder";
 import { normalizeMailActions, ruleActionFingerprint } from "@/lib/mail-actions";
 import { createMailboxProposal } from "@/lib/proposals";
@@ -344,115 +344,126 @@ async function executeJob(id: string) {
   if (!claimed.changes) return;
   const row = db.prepare("SELECT * FROM background_jobs WHERE id=?").get(id) as any;
   const steps = db.prepare("SELECT * FROM background_steps WHERE job_id=? ORDER BY position").all(id) as any[];
-  for (const step of steps) {
-    if (step.status === "complete") continue;
-    const claim = db
-      .prepare("UPDATE background_steps SET status='running' WHERE job_id=? AND position=? AND status='queued'")
-      .run(id, step.position);
-    if (!claim.changes) {
-      finishJob(
-        id,
-        "needs_review",
-        { steps: getBackgroundJob(id).steps },
-        "A previous write has no receipt. Review before retrying.",
-      );
-      return;
-    }
-    notify();
-    try {
-      const input = json<any>(step.input_json, {});
-      let result: any;
-      if (row.kind === "agent") {
-        const { executeQueuedAgent } = await import("@/lib/agent-jobs");
-        result = await executeQueuedAgent(id, input);
-      } else if (row.kind === "schedule") {
-        const { executeScheduleOccurrence } = await import("@/lib/schedules");
-        result = executeScheduleOccurrence(input.schedule);
-      } else if (row.kind === "sync") {
-        const { store } = await import("@/lib/store");
-        try {
-          result = await store([
-            "sync",
-            "--account",
-            input.account.name,
-            "--days",
-            String(input.settings.sync_days),
-            "--limit",
-            String(input.settings.initial_sync_limit),
-            "--scope",
-            input.settings.sync_scope || "inbox",
-            "--folders",
-            JSON.stringify(input.settings.sync_folders?.[input.account.name] || []),
-          ]);
-        } catch (error: any) {
-          result = { accounts: [], errors: [{ error: String(error?.message || error) }] };
+  const mailboxSession = row.kind === "mailbox" ? createMailboxActionSession() : undefined;
+  try {
+    for (const step of steps) {
+      if (step.status === "complete") continue;
+      const claim = db
+        .prepare("UPDATE background_steps SET status='running' WHERE job_id=? AND position=? AND status='queued'")
+        .run(id, step.position);
+      if (!claim.changes) {
+        finishJob(
+          id,
+          "needs_review",
+          { steps: getBackgroundJob(id).steps },
+          "A previous write has no receipt. Review before retrying.",
+        );
+        return;
+      }
+      notify();
+      try {
+        const input = json<any>(step.input_json, {});
+        let result: any;
+        if (row.kind === "agent") {
+          const { executeQueuedAgent } = await import("@/lib/agent-jobs");
+          result = await executeQueuedAgent(id, input);
+        } else if (row.kind === "schedule") {
+          const { executeScheduleOccurrence } = await import("@/lib/schedules");
+          result = executeScheduleOccurrence(input.schedule);
+        } else if (row.kind === "sync") {
+          const { store } = await import("@/lib/store");
+          try {
+            result = await store([
+              "sync",
+              "--account",
+              input.account.name,
+              "--days",
+              String(input.settings.sync_days),
+              "--limit",
+              String(input.settings.initial_sync_limit),
+              "--scope",
+              input.settings.sync_scope || "inbox",
+              "--folders",
+              JSON.stringify(input.settings.sync_folders?.[input.account.name] || []),
+            ]);
+          } catch (error: any) {
+            result = { accounts: [], errors: [{ error: String(error?.message || error) }] };
+          }
+        } else if (row.kind === "mailbox") {
+          result = await applyMailboxActions([input.action], [input.item], mailboxSession);
+          notify("messages", result.results || []);
+          if (result.status !== "applied") throw new Error(JSON.stringify(result));
+        } else if (row.kind === "draft") result = await appendImapDraft(input.content.account, input.content);
+        else if (row.kind === "folder") {
+          const cached = db
+            .prepare("SELECT delimiter FROM imap_folders WHERE account=? AND path=?")
+            .get(input.account, input.operation.path) as any;
+          result = await mutateAccountFolder(input.account, input.operation);
+          reconcileFolderRules(
+            input.account,
+            input.operation,
+            cached?.delimiter || result.folders[0]?.delimiter || "/",
+          );
+        } else throw new Error("Unknown background job kind");
+        if ((db.prepare("SELECT status FROM background_jobs WHERE id=?").get(id) as any)?.status === "cancelled")
+          return;
+        db.transaction(() => {
+          db.prepare("UPDATE background_steps SET status='complete',result_json=? WHERE job_id=? AND position=?").run(
+            JSON.stringify(result),
+            id,
+            step.position,
+          );
+          db.prepare("UPDATE background_jobs SET updated_at=? WHERE id=?").run(now(), id);
+          db.prepare(
+            "INSERT INTO agent_events(session_id,event_type,content,metadata_json,created_at) VALUES(?,?,?,?,?)",
+          ).run(
+            row.history_id,
+            "background_step_complete",
+            `Step ${step.position + 1} completed`,
+            JSON.stringify({ job_id: id, position: step.position, result }),
+            now(),
+          );
+        }).immediate();
+        notify();
+        if (row.kind === "sync") {
+          notify("messages");
+          try {
+            (globalThis as any).__emailAgentBroadcast?.({ type: "sync.status", job: getSyncJob() });
+          } catch {
+            /* Views are optional. */
+          }
         }
-      } else if (row.kind === "mailbox") {
-        result = await applyMailboxActions([input.action], [input.item]);
-        notify("messages", result.results || []);
-        if (result.status !== "applied") throw new Error(JSON.stringify(result));
-      } else if (row.kind === "draft") result = await appendImapDraft(input.content.account, input.content);
-      else if (row.kind === "folder") {
-        const cached = db
-          .prepare("SELECT delimiter FROM imap_folders WHERE account=? AND path=?")
-          .get(input.account, input.operation.path) as any;
-        result = await mutateAccountFolder(input.account, input.operation);
-        reconcileFolderRules(input.account, input.operation, cached?.delimiter || result.folders[0]?.delimiter || "/");
-      } else throw new Error("Unknown background job kind");
-      if ((db.prepare("SELECT status FROM background_jobs WHERE id=?").get(id) as any)?.status === "cancelled") return;
-      db.transaction(() => {
-        db.prepare("UPDATE background_steps SET status='complete',result_json=? WHERE job_id=? AND position=?").run(
-          JSON.stringify(result),
+      } catch (error: any) {
+        if ((db.prepare("SELECT status FROM background_jobs WHERE id=?").get(id) as any)?.status === "cancelled")
+          return;
+        db.prepare("UPDATE background_steps SET status=?,error=? WHERE job_id=? AND position=?").run(
+          ["schedule", "agent"].includes(row.kind) ? "error" : "needs_review",
+          String(error?.message || error),
           id,
           step.position,
         );
-        db.prepare("UPDATE background_jobs SET updated_at=? WHERE id=?").run(now(), id);
-        db.prepare(
-          "INSERT INTO agent_events(session_id,event_type,content,metadata_json,created_at) VALUES(?,?,?,?,?)",
-        ).run(
-          row.history_id,
-          "background_step_complete",
-          `Step ${step.position + 1} completed`,
-          JSON.stringify({ job_id: id, position: step.position, result }),
-          now(),
+        finishJob(
+          id,
+          ["schedule", "agent"].includes(row.kind) ? "error" : "needs_review",
+          { steps: getBackgroundJob(id).steps },
+          ["schedule", "agent"].includes(row.kind)
+            ? String(error?.message || error)
+            : `Write was not confirmed. Some effects may have completed. ${String(error?.message || error)}`,
         );
-      }).immediate();
-      notify();
-      if (row.kind === "sync") {
-        notify("messages");
-        try {
-          (globalThis as any).__emailAgentBroadcast?.({ type: "sync.status", job: getSyncJob() });
-        } catch {
-          /* Views are optional. */
-        }
+        return;
       }
-    } catch (error: any) {
-      if ((db.prepare("SELECT status FROM background_jobs WHERE id=?").get(id) as any)?.status === "cancelled") return;
-      db.prepare("UPDATE background_steps SET status=?,error=? WHERE job_id=? AND position=?").run(
-        ["schedule", "agent"].includes(row.kind) ? "error" : "needs_review",
-        String(error?.message || error),
-        id,
-        step.position,
-      );
-      finishJob(
-        id,
-        ["schedule", "agent"].includes(row.kind) ? "error" : "needs_review",
-        { steps: getBackgroundJob(id).steps },
-        ["schedule", "agent"].includes(row.kind)
-          ? String(error?.message || error)
-          : `Write was not confirmed. Some effects may have completed. ${String(error?.message || error)}`,
-      );
-      return;
     }
+    const completed = getBackgroundJob(id).steps;
+    const failures = row.kind === "sync" ? completed.flatMap((step) => step.result?.errors || []) : [];
+    finishJob(
+      id,
+      failures.length ? "error" : "complete",
+      { steps: completed },
+      failures.length ? failures.map((item) => item.error).join("; ") : undefined,
+    );
+  } finally {
+    await mailboxSession?.close();
   }
-  const completed = getBackgroundJob(id).steps;
-  const failures = row.kind === "sync" ? completed.flatMap((step) => step.result?.errors || []) : [];
-  finishJob(
-    id,
-    failures.length ? "error" : "complete",
-    { steps: completed },
-    failures.length ? failures.map((item) => item.error).join("; ") : undefined,
-  );
 }
 
 export function kickBackgroundJobs() {
