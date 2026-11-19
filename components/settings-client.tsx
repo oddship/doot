@@ -8,6 +8,7 @@ import { ProviderAuthManager } from "@/components/provider-auth-manager";
 import { ScheduleControls } from "@/components/schedule-controls";
 import { Badge, Button, Card, Dialog, EmptyState, Input, Label, PageHeader } from "@/components/ui";
 import { apiJson, errorMessage } from "@/lib/client-api";
+import { DEFAULT_PROPOSAL_ITEM_LIMIT, MAX_PROPOSAL_ITEMS } from "@/lib/proposal-limits";
 import { settingsSection, settingsSections } from "@/lib/settings-sections";
 
 export function SettingsClient({ initial }: { initial: any }) {
@@ -136,6 +137,9 @@ export function SettingsClient({ initial }: { initial: any }) {
             </a>
             <a className="session-link" href="#agent">
               Doot
+            </a>
+            <a className="session-link" href="#proposals">
+              Mailbox proposals
             </a>
             <a className="session-link" href="#classifier">
               Classification
@@ -283,6 +287,23 @@ export function SettingsClient({ initial }: { initial: any }) {
                 </select>
               </div>
             </div>
+          </Card>
+          <Card className="settings-section" id="proposals">
+            <h2>Mailbox proposals</h2>
+            <Label htmlFor="proposal-item-limit">Maximum emails per proposal</Label>
+            <Input
+              id="proposal-item-limit"
+              type="number"
+              min={1}
+              max={MAX_PROPOSAL_ITEMS}
+              step={1}
+              value={settings.proposal_item_limit}
+              onChange={(event) => setSettings({ ...settings, proposal_item_limit: event.target.value })}
+            />
+            <p className="muted">
+              Default: {DEFAULT_PROPOSAL_ITEM_LIMIT}. Increase this for larger cleanup batches. Each proposal still
+              needs your approval.
+            </p>
           </Card>
           <Card className="settings-section" id="classifier">
             <h2>Classification model</h2>

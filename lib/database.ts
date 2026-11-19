@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { DEFAULT_PROPOSAL_ITEM_LIMIT } from "@/lib/proposal-limits";
 import { escapedLikeContains, parseSearchQuery } from "@/lib/search-query";
 
 const DB_PATH = process.env.DOOT_DATABASE_PATH || path.join(process.cwd(), "email-cache.sqlite3");
@@ -319,6 +320,7 @@ if (!globalDatabase.__emailAgentDatabase) globalDatabase.__emailAgentDatabase = 
 export const db = globalDatabase.__emailAgentDatabase;
 
 export const DEFAULT_SETTINGS = {
+  proposal_item_limit: DEFAULT_PROPOSAL_ITEM_LIMIT,
   sync_days: 30,
   initial_sync_limit: 75,
   sync_on_start: false,

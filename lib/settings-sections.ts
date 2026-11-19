@@ -2,6 +2,7 @@ export const settingsSections = [
   ["accounts", "Accounts"],
   ["provider", "AI providers"],
   ["agent", "Doot model"],
+  ["proposals", "Mailbox proposals"],
   ["classifier", "Classification"],
   ["folders", "Folders"],
   ["memory", "Memory"],

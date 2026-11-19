@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_PROPOSAL_ITEMS, proposalItemLimit } from "@/lib/proposal-limits";
 
 const short = z.string().trim().min(1).max(240);
 const text = z.string().trim().min(1).max(4_000);
@@ -41,7 +42,7 @@ const workspaceActionIntentSchema = z.discriminatedUnion("type", [
             .strict(),
         )
         .min(1)
-        .max(40),
+        .max(MAX_PROPOSAL_ITEMS),
     })
     .strict(),
   z.object({ type: z.literal("open_artifact"), artifactId: z.number().int().positive() }).strict(),
@@ -216,11 +217,33 @@ export const generatedWorkspaceSchema = z
 // drift and makes invalid component names fail before tool execution.
 export const generatedWorkspaceJsonSchema = z.toJSONSchema(generatedWorkspaceSchema);
 
+export function workspaceJsonSchemaForProposalLimit(limit: number) {
+  const schema = structuredClone(generatedWorkspaceJsonSchema);
+  const maximum = proposalItemLimit(limit);
+  const visit = (value: any) => {
+    if (!value || typeof value !== "object") return;
+    if (value.properties?.type?.const === "create_proposal") value.properties.items.maxItems = maximum;
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(schema);
+  return schema;
+}
+
 export type GeneratedWorkspace = z.infer<typeof generatedWorkspaceSchema>;
 export type WorkspaceActionIntent = z.infer<typeof workspaceActionIntentSchema>;
 
-export function parseWorkspace(value: unknown) {
+export function parseWorkspace(value: unknown, proposalLimit = MAX_PROPOSAL_ITEMS) {
   const encoded = JSON.stringify(value);
   if (encoded.length > 100_000) throw new Error("Workspace exceeds the 100 KB limit");
-  return generatedWorkspaceSchema.parse(value);
+  const workspace = generatedWorkspaceSchema.parse(value);
+  const maximum = proposalItemLimit(proposalLimit);
+  const visit = (node: WorkspaceNode) => {
+    const actions = node.type === "action_group" ? node.actions : "action" in node ? [node.action] : [];
+    for (const action of actions)
+      if (action?.intent.type === "create_proposal" && action.intent.items.length > maximum)
+        throw new Error(`Proposal must contain 1–${maximum} items`);
+    if (node.type === "stack" || node.type === "grid") node.children.forEach(visit);
+  };
+  visit(workspace.root);
+  return workspace;
 }

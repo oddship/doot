@@ -1,5 +1,6 @@
-import { db, now } from "@/lib/database";
+import { db, now, settingsValue } from "@/lib/database";
 import { normalizeMailActions } from "@/lib/mail-actions";
+import { proposalItemLimit } from "@/lib/proposal-limits";
 import { knownMoveDestination } from "@/lib/rules";
 
 export function createMailboxProposal(input: {
@@ -10,13 +11,14 @@ export function createMailboxProposal(input: {
   flowId?: number;
 }) {
   const { action, items, actions, reason = "" } = input;
+  const limit = proposalItemLimit(settingsValue().proposal_item_limit);
   if (
     !["mark_read", "archive", "move", "delete"].includes(action) ||
     !Array.isArray(items) ||
     !items.length ||
-    items.length > 100
+    items.length > limit
   )
-    throw new Error("invalid action or items");
+    throw new Error(`Proposal must use a valid action and contain 1–${limit} items`);
   const plan = normalizeMailActions(actions, action);
   if (plan[plan.length - 1] !== action) throw new Error("Proposal action does not match its action sequence");
   for (const item of items) {

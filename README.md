@@ -40,6 +40,8 @@ npm run dev
 
 Open <http://127.0.0.1:8765>. In Settings, add an IMAP email account, choose the folders to sync, and sync it to browse and search your email. To use the assistant, also connect a model provider and select a model. Doot stores provider tokens, account credentials, and cached mail in the local SQLite database configured by `DOOT_DATABASE_PATH`; protect that file and never commit it.
 
+Settings → Mailbox proposals controls the maximum emails in each review proposal. The default is 100; increase it for larger cleanup batches (up to 10,000). The agent and proposal validation use this setting, and every mailbox change still requires browser approval.
+
 For day-to-day use, build once and run the production server:
 
 ```bash

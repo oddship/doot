@@ -2,8 +2,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { approvedBodyBatch, BODY_ACCESS_LIMITS, bodyRefKey, compactMessageBody } from "@/lib/agent-body-access";
 import { conversationFlowIds } from "@/lib/agent-flow-access";
+import { DEFAULT_PROPOSAL_ITEM_LIMIT } from "@/lib/proposal-limits";
 
-const { store, emitBackground } = vi.hoisted(() => ({ store: vi.fn(), emitBackground: vi.fn() }));
+const { store, emitBackground, settingsValue } = vi.hoisted(() => ({
+  store: vi.fn(),
+  emitBackground: vi.fn(),
+  settingsValue: vi.fn(),
+}));
+vi.mock("@/lib/database", async (original) => ({
+  ...(await original<typeof import("@/lib/database")>()),
+  settingsValue,
+}));
 vi.mock("@/lib/store", () => ({ store, emitBackground }));
 vi.mock("@/lib/agent-credential-store", () => ({ sqliteAgentCredentialStore: {} }));
 vi.mock("@/lib/drafts", () => ({ getDraft: vi.fn(), saveLocalDraft: vi.fn() }));
@@ -38,6 +47,7 @@ const original = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  settingsValue.mockReturnValue({ proposal_item_limit: DEFAULT_PROPOSAL_ITEM_LIMIT });
   store.mockImplementation(async (args: string[]) => {
     if (args[0] === "rule-get") return { rule: original };
     if (args[0] === "rule-list") return { rules: [] };
@@ -56,6 +66,39 @@ beforeEach(() => {
     if (args[0] === "search") return { messages: refs.slice(0, 26), total: 26 };
     if (args[0] === "message-context") return { messages: JSON.parse(args[1]) };
     return {};
+  });
+});
+
+describe("mailbox proposal batches", () => {
+  it.each([42, 1000])("passes all %i exact references to a single proposal", async (count) => {
+    settingsValue.mockReturnValue({ proposal_item_limit: 1000 });
+    const items = Array.from({ length: count }, (_, index) => ({
+      account: "work",
+      uid: String(index + 1),
+      source_folder: "INBOX",
+    }));
+    await tool("email_propose_organization").execute("propose", { action: "archive", reason: "Reviewed", items });
+    expect(store).toHaveBeenCalledExactlyOnceWith([
+      "propose",
+      "archive",
+      JSON.stringify(items),
+      "--reason",
+      "Reviewed",
+    ]);
+  });
+
+  it("advertises the same limit and rejects empty or oversized batches before storage", async () => {
+    const proposal = tool("email_propose_organization");
+    expect(proposal.parameters.properties.items).toMatchObject({ minItems: 1, maxItems: DEFAULT_PROPOSAL_ITEM_LIMIT });
+    for (const count of [0, DEFAULT_PROPOSAL_ITEM_LIMIT + 1])
+      await expect(
+        proposal.execute("propose", {
+          action: "archive",
+          reason: "Reviewed",
+          items: Array.from({ length: count }, () => refs[0]),
+        }),
+      ).rejects.toThrow(`1–${DEFAULT_PROPOSAL_ITEM_LIMIT}`);
+    expect(store).not.toHaveBeenCalled();
   });
 });
 

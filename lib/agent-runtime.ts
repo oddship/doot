@@ -13,11 +13,12 @@ import { openDurableAgent } from "@/lib/agent-durable";
 import { conversationFlowIds } from "@/lib/agent-flow-access";
 import { setAppState } from "@/lib/app-state";
 import { cancelSavedAgentJobs } from "@/lib/background-jobs";
-import { db } from "@/lib/database";
+import { db, settingsValue } from "@/lib/database";
 import { getDraft, saveLocalDraft } from "@/lib/drafts";
+import { proposalItemLimit } from "@/lib/proposal-limits";
 import { emitBackground, store } from "@/lib/store";
 import { compactEmailSearchResult, toolInputSummary, toolResultSummary } from "@/lib/tool-presentation";
-import { type GeneratedWorkspace, generatedWorkspaceJsonSchema, parseWorkspace } from "@/lib/workspace";
+import { type GeneratedWorkspace, parseWorkspace, workspaceJsonSchemaForProposalLimit } from "@/lib/workspace";
 import { applyWorkspacePatch, prependTopLevelWorkspaceAdds } from "@/lib/workspace-patch";
 
 type StreamEvent = Record<string, unknown>;
@@ -154,6 +155,7 @@ function workspaceSearchKeys(workspace: any) {
 }
 
 export function toolsFor(state: Active): any[] {
+  const proposalLimit = proposalItemLimit(settingsValue().proposal_item_limit);
   return [
     {
       name: "email_dashboard_snapshot",
@@ -527,12 +529,12 @@ export function toolsFor(state: Active): any[] {
       label: "Render generated workspace",
       description:
         "Persist and render a safe schemaVersion 1 workspace. Root primitives include stack, grid, heading, metric, message_group with tags, table, chart, sender_cluster, flow_suggestion, search_link, note, and action_group. Use search_link for useful Inbox searches. Actions are validated intents only.",
-      parameters: generatedWorkspaceJsonSchema as any,
+      parameters: workspaceJsonSchemaForProposalLimit(proposalLimit) as any,
       execute: async (_id: string, params: unknown) => {
         state.renderAttempts += 1;
         let workspace: GeneratedWorkspace;
         try {
-          workspace = parseWorkspace(params);
+          workspace = parseWorkspace(params, proposalItemLimit(settingsValue().proposal_item_limit));
           if (state.runKind === "organization" && !hasInboxSearchLink(workspace.root))
             throw new Error("Organization workspaces must include at least one search_link or filter_inbox action");
           if (state.requiresReviewFlow && !hasReviewFlow(workspace.root))
@@ -597,7 +599,10 @@ export function toolsFor(state: Active): any[] {
             throw new Error("Current dashboard is not compatible; use render_workspace instead");
           const before = parseWorkspace(current.workspace.spec);
           const operations = prependTopLevelWorkspaceAdds(params.operations);
-          const workspace = parseWorkspace(applyWorkspacePatch(before, operations));
+          const workspace = parseWorkspace(
+            applyWorkspacePatch(before, operations),
+            proposalItemLimit(settingsValue().proposal_item_limit),
+          );
           if (state.runKind === "organization" && !hasInboxSearchLink(workspace.root))
             throw new Error("Organization workspaces must include at least one search_link or filter_inbox action");
           if (state.requiresReviewFlow && !hasReviewFlow(workspace.root))
@@ -655,7 +660,8 @@ export function toolsFor(state: Active): any[] {
           reason: stringSchema,
           items: {
             type: "array",
-            maxItems: 40,
+            minItems: 1,
+            maxItems: proposalLimit,
             items: objectSchema(
               {
                 account: stringSchema,
@@ -670,7 +676,9 @@ export function toolsFor(state: Active): any[] {
         ["action", "reason", "items"],
       ),
       execute: async (_id: string, params: any) => {
-        if (!params.items?.length || params.items.length > 40) throw new Error("Proposal must contain 1–40 items");
+        const limit = proposalItemLimit(settingsValue().proposal_item_limit);
+        if (!params.items?.length || params.items.length > limit)
+          throw new Error(`Proposal must contain 1–${limit} items`);
         const proposal = await store<any>([
           "propose",
           params.action,

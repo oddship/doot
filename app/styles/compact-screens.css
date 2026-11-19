@@ -166,6 +166,7 @@
     .settings-page[data-settings-section="agent"] .settings-main > #agent {
       display: block;
     }
+    .settings-page[data-settings-section="proposals"] .settings-main > #proposals,
     .settings-page[data-settings-section="classifier"] .settings-main > #classifier {
       display: block;
     }

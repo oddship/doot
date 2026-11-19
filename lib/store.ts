@@ -23,6 +23,7 @@ import { type FolderMutation, isProtectedMailbox } from "@/lib/imap-folder";
 import { normalizeMailActions, ruleActionFingerprint } from "@/lib/mail-actions";
 import { providerForHost } from "@/lib/mail-provider";
 import { messageFacets } from "@/lib/message-facets";
+import { proposalItemLimit } from "@/lib/proposal-limits";
 import { createMailboxProposal } from "@/lib/proposals";
 import {
   deleteRule,
@@ -633,7 +634,8 @@ export async function store<T = any>(args: string[] = []): Promise<T> {
       );
       db.transaction(() => {
         for (let [key, value] of Object.entries(submitted)) {
-          if (key === "sync_days") value = Math.max(1, Math.min(Number(value), 3650));
+          if (key === "proposal_item_limit") value = proposalItemLimit(value);
+          else if (key === "sync_days") value = Math.max(1, Math.min(Number(value), 3650));
           else if (key === "initial_sync_limit")
             value = value === "all" ? "all" : Math.max(1, Math.min(Number(value), 10_000));
           else if (

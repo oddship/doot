@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { generatedWorkspaceJsonSchema, generatedWorkspaceSchema, parseWorkspace } from "@/lib/workspace";
+import { MAX_PROPOSAL_ITEMS } from "@/lib/proposal-limits";
+import {
+  generatedWorkspaceJsonSchema,
+  generatedWorkspaceSchema,
+  parseWorkspace,
+  workspaceJsonSchemaForProposalLimit,
+} from "@/lib/workspace";
 
 const base = (root: any) => ({
   schemaVersion: 1,
@@ -8,6 +14,70 @@ const base = (root: any) => ({
   root,
 });
 describe("generated workspace schema", () => {
+  it("uses the configured limit for generated review actions", () => {
+    const workspace = base({
+      type: "stack",
+      children: [
+        {
+          type: "action_group",
+          actions: [
+            {
+              label: "Review archive",
+              intent: {
+                type: "create_proposal",
+                action: "archive",
+                reason: "Reviewed",
+                items: Array.from({ length: 1000 }, (_, index) => ({
+                  account: "work",
+                  uid: String(index + 1),
+                  source_folder: "INBOX",
+                })),
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(() => parseWorkspace(workspace, 100)).toThrow("1–100");
+    expect(parseWorkspace(workspace, 1000).root).toEqual(workspace.root);
+    const maxima: number[] = [];
+    const visit = (node: any) => {
+      if (!node || typeof node !== "object") return;
+      if (node.properties?.type?.const === "create_proposal") maxima.push(node.properties.items.maxItems);
+      Object.values(node).forEach(visit);
+    };
+    visit(workspaceJsonSchemaForProposalLimit(1000));
+    expect(maxima.length).toBeGreaterThan(0);
+    expect(maxima.every((limit) => limit === 1000)).toBe(true);
+  });
+
+  it.each([42, MAX_PROPOSAL_ITEMS, MAX_PROPOSAL_ITEMS + 1])(
+    "validates a review action containing %i messages against the shared proposal limit",
+    (count) => {
+      const result = generatedWorkspaceSchema.safeParse(
+        base({
+          type: "action_group",
+          actions: [
+            {
+              label: "Review archive",
+              intent: {
+                type: "create_proposal",
+                action: "archive",
+                reason: "Reviewed batch",
+                items: Array.from({ length: count }, (_, index) => ({
+                  account: "work",
+                  uid: String(index + 1),
+                  source_folder: "INBOX",
+                })),
+              },
+            },
+          ],
+        }),
+      );
+      expect(result.success).toBe(count <= MAX_PROPOSAL_ITEMS);
+    },
+  );
+
   const nodes = [
     { type: "heading", text: "Priorities", description: "Recent important mail" },
     { type: "metric", label: "Needs reply", value: "4", tone: "attention" },
