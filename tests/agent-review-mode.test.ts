@@ -8,6 +8,8 @@ describe("review intent", () => {
     "Summarise the messages and suggest what matters",
     "Organize this inbox without creating flows",
     "Review existing flows; do not create proposals",
+    "Prepare the final review summary; do not create/apply proposals, Flows or other mailbox changes",
+    "Prepare review choices without creating or applying proposals",
   ])("does not demand an automation for %s", (text) => expect(requiresReviewAction(text)).toBe(false));
   it.each([
     "Suggest a flow for my inbox",

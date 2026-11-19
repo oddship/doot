@@ -2,7 +2,7 @@ export function requiresReviewAction(text: string, organize = false) {
   // A review can finish with findings or a body-access request. It is not a
   // request to invent an automation simply because it mentions the inbox.
   if (
-    /(?:do not|don't|no|without)\s+(?:want\s+|create\s+|creating\s+|new\s+|any\s+)*(?:flows?|rules?|proposals?)/i.test(
+    /\b(?:do not|don't|no|without)\s+(?:want\s+|(?:create|creating|apply|applying)(?:\s*(?:\/|or|and)\s*(?:create|creating|apply|applying))?\s+|new\s+|any\s+)*(?:flows?|rules?|proposals?)\b/i.test(
       text,
     )
   )
