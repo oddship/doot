@@ -36,6 +36,19 @@ it("returns uncertain outcomes without retrying them", async () => {
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
 
+it("waits for the continuation ID returned by an explicit body-access decision", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ status: "approved", job_id: "synthetic-body-job" }, { status: 202 }))
+    .mockResolvedValueOnce(Response.json({ job: { id: "synthetic-body-job", status: "complete" } }));
+  const result = await runApi(
+    parseArguments(["POST", "/agent/sessions/demo/body-approvals/read", "--data-file", "-", "--wait"]),
+    { fetch: fetcher, readStdin: async () => '{"approved":true}' },
+  );
+  expect(result.completed).toBe(true);
+  expect(fetcher.mock.calls.map((call) => call[1].method)).toEqual(["POST", "GET"]);
+});
+
 it("preserves the accepted job identifier when polling fails", async () => {
   const fetcher = vi
     .fn()

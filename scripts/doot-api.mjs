@@ -71,6 +71,7 @@ export async function runApi(options, dependencies = {}) {
   const accepted = await request(url, options.method, body);
   if (!options.wait) return accepted;
   let job = accepted.job;
+  if (!job && accepted.job_id) job = { id: accepted.job_id, status: "queued" };
   // Sync and other legacy operations may return the job itself.
   if (!job && accepted.id && accepted.kind && accepted.status) job = accepted;
   if (!job?.id) throw new Error("This response has no durable job to wait for");
